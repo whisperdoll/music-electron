@@ -1,0 +1,716 @@
+$songHeight: 68px;
+$songListOpacity: 0.9;
+$filterHeight: 48px;
+$bottomPanelHeight: 176px;
+$playlistsWidth: 300px;
+
+*
+{
+    outline: none;
+}
+
+input[type="text"], textarea
+{
+    border: 1px solid #aaa;
+    padding: 2px;
+}
+
+html, body
+{
+    font-family: Helvetica, sans-serif;
+    height: 100%;
+    width: 100%;
+    padding: 0;
+    margin: 0;
+}
+
+canvas
+{
+    image-rendering: pixelated;
+}
+
+::-webkit-scrollbar
+{
+  background-color:rgba(0,0,0,0.7);
+}
+
+::-webkit-scrollbar-thumb
+{
+  background:rgba(255,255,255,0.2);
+  border:1px solid rgba(255,255,255,0.2);
+  border-radius:0px;
+}
+
+.contextMenu
+{
+    $border-radius: 3px;
+    z-index: 100;
+    color: #eee;
+    display: inline-block;
+    position: absolute;
+    background-color: #111;
+    border-radius: $border-radius;
+    user-select: none;
+    overflow: hidden;
+    border: 1px solid #666;
+
+    .contextMenuItem
+    {
+        padding: 8px;
+        box-sizing: border-box;
+        //border-bottom: 1px solid rgba(255,255,255,0.3);
+
+        &:hover
+        {
+            cursor: pointer;
+            background-color: rgba(255,255,255,0.1);
+        }
+
+        .text
+        {
+            display: inline-block;
+        }
+
+        &.hasSubMenu
+        {
+            &::after
+            {
+                content: "›";
+                padding-left: 12px;
+                padding-right: 2px;
+                line-height: -4px;
+                font-weight: bold;
+            }
+        }
+    }
+}
+
+#container, #mainPlayer, .albumArt, .dialog-backdrop, .spectrum > canvas, .albumOverlay
+{
+    height: 100%;
+    width: 100%;
+    position: absolute;
+    left: 0;
+    top: 0;
+    overflow: auto;
+    padding: 0;
+    margin: 0;
+}
+
+.dialog-backdrop
+{
+    background-color: rgba(0,0,0,0.7);
+    z-index: 1000;
+
+    .dialog
+    {
+        background-color: #eee;
+        padding: 24px;
+        position: absolute;
+        left: 50%;
+        top: 40%;
+        transform: translate(-50%, -50%);
+    }
+}
+
+.dialog-backdrop
+{
+    &.rename
+    {
+        .dialog
+        {
+            display: grid;
+            grid-gap: 8px;
+            grid-template-columns: auto 56px;
+            grid-template-rows: auto auto auto;
+            grid-template-areas:
+                "input accept"
+                "hint hint"
+                "preview preview";
+
+            .rule
+            {
+                grid-area: input;
+                border: 1px solid #aaa;
+                padding: 4px;
+            }
+
+            .accept
+            {
+                grid-area: accept;
+            }
+
+            .hint
+            {
+                grid-area: hint;
+            }
+
+            .previewContainer
+            {
+                grid-area: preview;
+                background-color: #fff;
+                font-size: 12px;
+                border-collapse: collapse;
+                border: 1px solid #aaa;
+
+                tr
+                {
+                    &:nth-of-type(even)
+                    {
+                        background-color: #ddd;
+                    }
+                }
+
+                td
+                {
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    padding: 4px;
+
+                    &.changed
+                    {
+                        font-weight: bold;
+                    }
+                }
+            }
+        }
+    }
+    
+    &.playlist
+    {
+        .dialog
+        {
+            display: grid;
+            grid-template-areas:
+                "typeLabel type type type"
+                "nameLabel name name name"
+                "filterLabel filter filter filter"
+                "paths paths paths paths"
+                "file file file file"
+                "blank blank ok cancel";
+            grid-template-columns: 50px auto 64px 64px;
+            grid-template-rows: auto auto auto auto auto auto;
+            grid-gap: 6px;
+
+            .typeLabel
+            {
+                grid-area: typeLabel;
+            }
+
+            .typeComboBox
+            {
+                grid-area: type;
+            }
+
+            .nameLabel
+            {
+                grid-area: nameLabel;
+            }
+
+            .name
+            {
+                grid-area: name;
+            }
+
+            .filterLabel
+            {
+                grid-area: filterLabel;
+            }
+
+            .filter
+            {
+                grid-area: filter;
+            }
+
+            .paths
+            {
+                grid-area: paths;
+                height: 200px;
+                width: 500px;
+            }
+
+            .pathSelectLabel
+            {
+                grid-area: file;
+                -webkit-appearance: button;
+                padding: 2px 4px;
+                box-sizing: border-box;
+                text-align: center;
+
+                .pathSelect
+                {
+                    display: none;
+                }
+            }
+
+            .ok
+            {
+                grid-area: ok;
+                margin-top: 8px;
+            }
+
+            .cancel
+            {
+                grid-area: cancel;
+                margin-top: 8px;
+            }
+        }
+    }
+}
+
+#mainPlayer
+{
+    z-index: 0;
+    background: linear-gradient(to bottom right,
+      #447, #977, #766);
+
+    .filter-container, .filter-container > input.filter
+    {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: $filterHeight;
+        margin: 0;
+        box-sizing: border-box;
+        background-color: rgba(0,0,0,0.8);
+        border: 0;
+        border-bottom: 1px dotted #999;
+        color: #ddd;
+        padding: 0 12px;
+        font-size: 18px;
+        position: relative;
+
+        .tag
+        {
+            margin: 0 8px;
+            padding: 4px 12px;
+            background-color: #444;
+            border-radius: 16px;
+            color: #ccc;
+            display: inline-block;
+            font-size: 14px;
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            user-select: none;
+            cursor: pointer;
+        
+            .text
+            {
+                display: inline-block;      
+                max-width: 200px;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                margin-bottom: -2px;
+            }
+
+            .remove
+            {
+                display: inline-block;
+                margin-left: 8px;
+
+                &:hover
+                {
+                    color: #fff;
+                }
+            }
+        }
+    }
+
+    .filter-container
+    {
+        padding: 0;
+        background-color: transparent;
+    }
+
+    .songList
+    {
+        position: absolute;
+        left: 0;
+        top: $filterHeight;
+        width: calc(100% - #{$playlistsWidth});
+        height: calc(100% - #{$bottomPanelHeight} - #{$filterHeight});
+        overflow: auto;
+        user-select: none;
+        display: inline-block;
+
+        .song
+        {
+            height: $songHeight;
+            width: 100%;
+            padding: 0;
+            background-color: rgba(0, 0, 0, 0);
+            color: #eee;
+            font-family: "Segoe UI";
+            position: relative;
+        
+            &.even
+            {
+                background-color: rgba(0,0,0,0.06);
+            }
+        
+            &.selected
+            {
+                background-color: rgba(180,180,180,0.85);
+                color: #111;
+        
+                .secondaryLabel
+                {
+                    color: #111 !important;
+                }
+            }
+
+            &.playing
+            {
+                font-weight: bold;
+            }
+        
+            img.thumbnail {
+                height: $songHeight;
+                width: $songHeight;
+                object-fit: cover;
+                object-position: center;
+                float: left;
+                margin-right: 16px;
+                //box-shadow: 0px 0px 10px 1px rgba(0, 0, 0, 0.75);
+            }
+        
+            .shadow
+            {
+                position: absolute;
+                left: $songHeight;
+                width: 6px;
+                height: 100%;
+                background: linear-gradient(to right, rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0));
+            }
+        
+            .labels
+            {
+                display: flex;
+                flex-flow: column wrap;
+                justify-content: space-evenly;
+                align-content: center;
+                align-items: stretch;
+                height: 100%;
+                overflow: hidden;
+                white-space: nowrap;
+        
+                div
+                {
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    max-width: 100%;
+                    word-break: keep-all;
+                    white-space: nowrap;
+        
+                    &.primaryLabel
+                    {
+                        font-size: 1.2em;
+                    }
+            
+                    &.secondaryLabel
+                    {
+                        font-size: 1em;
+                        color: #bbb;
+                        font-style: italic;
+                        padding-bottom: 0.2em;
+                    }
+                }
+            }
+        }
+    }
+
+    .playlists
+    {
+        position: absolute;
+        top: $filterHeight;
+        right: 0;
+        height: calc(100% - #{$bottomPanelHeight} - #{$filterHeight});
+        width: $playlistsWidth;
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+        background-color: rgba(0,0,0,0.7);
+        color: #eee;
+        display: inline-block;
+
+        .list
+        {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+
+            .listItem
+            {
+                padding: 8px 12px;
+                background-color: rgba(0,0,0,0);
+                cursor: pointer;
+                user-select: none;
+
+                &:hover
+                {
+                    background-color: rgba(255,255,255,0.1);
+                }
+
+                &.add
+                {
+                    text-align: center;
+                    font-weight: bold;
+                }
+            }
+        }
+    }
+
+    .bottomPanel
+    {
+        $wavebarHeight: 76px;
+        $buttonsWidth: 240px;
+        $padding: 32px;
+        $columnWidth: calc((100% - #{$buttonsWidth}) / 2 - #{$padding});
+        $shuffleWidth: 32px;
+
+        position: absolute;
+        bottom: 0;
+        height: $bottomPanelHeight;
+        width: 100%;
+        background-color: rgba(0,0,0,0.8);
+        box-sizing: border-box;
+        border: 2px solid rgba(0,0,0,0.5);
+        overflow: hidden;
+        border-left: 0;
+        border-right: 0;
+        border-bottom: 0;
+        padding-bottom: 8px;
+        background: linear-gradient(to bottom right, rgba(0, 0, 0, 0.8), rgba(0, 0, 0, 0.95));
+        color: #eee;
+
+        display: grid;
+        align-items: center;
+        padding: 0 0;
+        box-sizing: border-box;
+        grid-template-columns: $padding $columnWidth $buttonsWidth $columnWidth $padding;
+        grid-template-rows: 20px auto auto 8px $wavebarHeight;
+        grid-template-areas:
+            "leftpadding a controls b rightpadding"
+            "leftpadding primaryLabel controls misc rightpadding"
+            "leftpadding secondaryLabel controls time rightpadding"
+            "leftpadding c controls d rightpadding"
+            "wavebar wavebar wavebar wavebar wavebar";
+
+        .primaryLabel
+        {
+            margin-right: auto;
+            grid-area: primaryLabel;
+            font-size: 1.7em;
+            cursor: pointer;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            width: 100%;
+        }
+
+        .secondaryLabel
+        {
+            margin-right: auto;
+            grid-area: secondaryLabel;
+            color: #aaa;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            width: 100%;
+        }
+
+        .songLength
+        {
+            grid-area: time;
+            margin-left: auto;
+        }
+
+        .misc
+        {
+            grid-area: misc;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+
+            .volume
+            {
+                -webkit-appearance: none; /* Hides the slider so that custom slider can be made */
+                background: transparent; /* Otherwise white in Chrome */
+                height: 32px;
+                cursor: pointer;
+                opacity: 0.7;
+                width: 50%;
+                margin: 0;
+
+                &:hover
+                {
+                    opacity: 1;
+                }
+                
+                &::-webkit-slider-thumb {
+                    -webkit-appearance: none;
+                }
+                
+                &:focus {
+                    outline: none; /* Removes the blue border. You should probably do some kind of focus styling for accessibility reasons though. */
+                }
+                
+                &::-webkit-slider-thumb {
+                    -webkit-appearance: none;
+                    border: 1px solid #333;
+                    height: 24px;
+                    width: 24px;
+                    padding:0;
+                    box-sizing:border-box;
+                    border-radius: 100%;
+                    background: rgba(255,255,255,.9);
+                    margin-top: -8px; /* You need to specify a margin in Chrome, but in Firefox and IE it is automatic */
+                }
+                
+                &::-webkit-slider-runnable-track {
+                    width: 100%;
+                    height: 8.4px;
+                    cursor: pointer;
+                    background: rgba(50,50,50,0.9);
+                    border-radius: 4px;
+                    border: 0;
+                    border-right:12px solid tra
+                }
+                
+                &:focus::-webkit-slider-runnable-track {
+                
+                }
+            }
+
+            .shuffle
+            {
+                background-image: url("../img/shuffle.svg");
+                opacity: 0.3;
+                height: 32px;
+                width: 32px;
+                margin: 0;
+                padding: 0;
+                margin-left: 16px;
+    
+                &:hover, &.active
+                {
+                    opacity: 0.9;
+                }
+            }
+        }
+
+        .songControls
+        {
+            grid-area: controls;
+            background-color: transparent;
+            overflow: hidden;
+            color: #eee;
+            height: 100%;
+            display: flex;
+            flex-flow: row wrap;
+            justify-content: center;
+            align-items: center;
+            float: left;
+            padding-top: 4px;
+            box-sizing: border-box;
+        
+            .playPause
+            {
+                width: 64px;
+                height: 64px;
+            }
+        
+            .play
+            {
+                background-image: url("../img/play.svg");
+            }
+        
+            .pause
+            {
+                background-image: url("../img/pause.svg");
+            }
+        
+            .next
+            {
+                background-image: url("../img/forward.svg");
+            }
+        
+            .previous
+            {
+                background-image: url("../img/backward.svg");
+            }
+        }
+        
+        .wavebar
+        {
+            grid-area: wavebar;
+            width: 100%;
+            background-color: transparent;
+            overflow: hidden;
+            height: $wavebarHeight;
+            cursor: pointer;
+            padding-bottom: 10px;
+        }
+    }
+}
+
+.albumArt
+{
+    filter: blur(15px);
+    background-size: cover;
+    background-position: center;
+    z-index: -1001;
+}
+
+.albumOverlay
+{
+    background-color: rgba(0, 0, 0, $songListOpacity);
+    z-index: -1000;
+}
+
+.spectrum
+{
+    z-index: -1;
+    opacity: 0.7;
+    height: calc(100% - #{$bottomPanelHeight} - #{$filterHeight});
+    position: absolute;
+    top: $filterHeight;
+    left: 0;
+    width: 100%;
+    background-color: transparent;
+    
+    canvas
+    {
+        opacity: 0.2;
+    }
+}
+
+.loading
+{
+    position: absolute;
+    left: calc(50% - #{$playlistsWidth} / 2);
+    top: 40%;
+    transform: translate(-50%, -50%);
+    opacity: 0.2;
+}
+
+.svgButton
+{
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
+    width: 48px;
+    height: 48px;
+    background-color: transparent;
+    border: 0;
+    margin: 0 12px;
+    opacity: 0.8;
+    cursor: pointer;
+
+    &:hover
+    {
+        opacity: 1;
+    }
+}

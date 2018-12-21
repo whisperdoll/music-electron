@@ -1,0 +1,524 @@
+@charset "UTF-8";
+* {
+  outline: none;
+}
+
+input[type=text], textarea {
+  border: 1px solid #aaa;
+  padding: 2px;
+}
+
+html, body {
+  font-family: Helvetica, sans-serif;
+  height: 100%;
+  width: 100%;
+  padding: 0;
+  margin: 0;
+}
+
+canvas {
+  image-rendering: pixelated;
+}
+
+::-webkit-scrollbar {
+  background-color: rgba(0, 0, 0, 0.7);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 0px;
+}
+
+.contextMenu {
+  z-index: 100;
+  color: #eee;
+  display: inline-block;
+  position: absolute;
+  background-color: #111;
+  border-radius: 3px;
+  user-select: none;
+  overflow: hidden;
+  border: 1px solid #666;
+}
+.contextMenu .contextMenuItem {
+  padding: 8px;
+  box-sizing: border-box;
+}
+.contextMenu .contextMenuItem:hover {
+  cursor: pointer;
+  background-color: rgba(255, 255, 255, 0.1);
+}
+.contextMenu .contextMenuItem .text {
+  display: inline-block;
+}
+.contextMenu .contextMenuItem.hasSubMenu::after {
+  content: "›";
+  padding-left: 12px;
+  padding-right: 2px;
+  line-height: -4px;
+  font-weight: bold;
+}
+
+#container, #mainPlayer, .albumArt, .dialog-backdrop, .spectrum > canvas, .albumOverlay {
+  height: 100%;
+  width: 100%;
+  position: absolute;
+  left: 0;
+  top: 0;
+  overflow: auto;
+  padding: 0;
+  margin: 0;
+}
+
+.dialog-backdrop {
+  background-color: rgba(0, 0, 0, 0.7);
+  z-index: 1000;
+}
+.dialog-backdrop .dialog {
+  background-color: #eee;
+  padding: 24px;
+  position: absolute;
+  left: 50%;
+  top: 40%;
+  transform: translate(-50%, -50%);
+}
+
+.dialog-backdrop.rename .dialog {
+  display: grid;
+  grid-gap: 8px;
+  grid-template-columns: auto 56px;
+  grid-template-rows: auto auto auto;
+  grid-template-areas: "input accept" "hint hint" "preview preview";
+}
+.dialog-backdrop.rename .dialog .rule {
+  grid-area: input;
+  border: 1px solid #aaa;
+  padding: 4px;
+}
+.dialog-backdrop.rename .dialog .accept {
+  grid-area: accept;
+}
+.dialog-backdrop.rename .dialog .hint {
+  grid-area: hint;
+}
+.dialog-backdrop.rename .dialog .previewContainer {
+  grid-area: preview;
+  background-color: #fff;
+  font-size: 12px;
+  border-collapse: collapse;
+  border: 1px solid #aaa;
+}
+.dialog-backdrop.rename .dialog .previewContainer tr:nth-of-type(even) {
+  background-color: #ddd;
+}
+.dialog-backdrop.rename .dialog .previewContainer td {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 4px;
+}
+.dialog-backdrop.rename .dialog .previewContainer td.changed {
+  font-weight: bold;
+}
+.dialog-backdrop.playlist .dialog {
+  display: grid;
+  grid-template-areas: "typeLabel type type type" "nameLabel name name name" "filterLabel filter filter filter" "paths paths paths paths" "file file file file" "blank blank ok cancel";
+  grid-template-columns: 50px auto 64px 64px;
+  grid-template-rows: auto auto auto auto auto auto;
+  grid-gap: 6px;
+}
+.dialog-backdrop.playlist .dialog .typeLabel {
+  grid-area: typeLabel;
+}
+.dialog-backdrop.playlist .dialog .typeComboBox {
+  grid-area: type;
+}
+.dialog-backdrop.playlist .dialog .nameLabel {
+  grid-area: nameLabel;
+}
+.dialog-backdrop.playlist .dialog .name {
+  grid-area: name;
+}
+.dialog-backdrop.playlist .dialog .filterLabel {
+  grid-area: filterLabel;
+}
+.dialog-backdrop.playlist .dialog .filter {
+  grid-area: filter;
+}
+.dialog-backdrop.playlist .dialog .paths {
+  grid-area: paths;
+  height: 200px;
+  width: 500px;
+}
+.dialog-backdrop.playlist .dialog .pathSelectLabel {
+  grid-area: file;
+  -webkit-appearance: button;
+  padding: 2px 4px;
+  box-sizing: border-box;
+  text-align: center;
+}
+.dialog-backdrop.playlist .dialog .pathSelectLabel .pathSelect {
+  display: none;
+}
+.dialog-backdrop.playlist .dialog .ok {
+  grid-area: ok;
+  margin-top: 8px;
+}
+.dialog-backdrop.playlist .dialog .cancel {
+  grid-area: cancel;
+  margin-top: 8px;
+}
+
+#mainPlayer {
+  z-index: 0;
+  background: linear-gradient(to bottom right, #447, #977, #766);
+}
+#mainPlayer .filter-container, #mainPlayer .filter-container > input.filter {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 48px;
+  margin: 0;
+  box-sizing: border-box;
+  background-color: rgba(0, 0, 0, 0.8);
+  border: 0;
+  border-bottom: 1px dotted #999;
+  color: #ddd;
+  padding: 0 12px;
+  font-size: 18px;
+  position: relative;
+}
+#mainPlayer .filter-container .tag, #mainPlayer .filter-container > input.filter .tag {
+  margin: 0 8px;
+  padding: 4px 12px;
+  background-color: #444;
+  border-radius: 16px;
+  color: #ccc;
+  display: inline-block;
+  font-size: 14px;
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  user-select: none;
+  cursor: pointer;
+}
+#mainPlayer .filter-container .tag .text, #mainPlayer .filter-container > input.filter .tag .text {
+  display: inline-block;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: -2px;
+}
+#mainPlayer .filter-container .tag .remove, #mainPlayer .filter-container > input.filter .tag .remove {
+  display: inline-block;
+  margin-left: 8px;
+}
+#mainPlayer .filter-container .tag .remove:hover, #mainPlayer .filter-container > input.filter .tag .remove:hover {
+  color: #fff;
+}
+#mainPlayer .filter-container {
+  padding: 0;
+  background-color: transparent;
+}
+#mainPlayer .songList {
+  position: absolute;
+  left: 0;
+  top: 48px;
+  width: calc(100% - 300px);
+  height: calc(100% - 176px - 48px);
+  overflow: auto;
+  user-select: none;
+  display: inline-block;
+}
+#mainPlayer .songList .song {
+  height: 68px;
+  width: 100%;
+  padding: 0;
+  background-color: rgba(0, 0, 0, 0);
+  color: #eee;
+  font-family: "Segoe UI";
+  position: relative;
+}
+#mainPlayer .songList .song.even {
+  background-color: rgba(0, 0, 0, 0.06);
+}
+#mainPlayer .songList .song.selected {
+  background-color: rgba(180, 180, 180, 0.85);
+  color: #111;
+}
+#mainPlayer .songList .song.selected .secondaryLabel {
+  color: #111 !important;
+}
+#mainPlayer .songList .song.playing {
+  font-weight: bold;
+}
+#mainPlayer .songList .song img.thumbnail {
+  height: 68px;
+  width: 68px;
+  object-fit: cover;
+  object-position: center;
+  float: left;
+  margin-right: 16px;
+}
+#mainPlayer .songList .song .shadow {
+  position: absolute;
+  left: 68px;
+  width: 6px;
+  height: 100%;
+  background: linear-gradient(to right, rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0));
+}
+#mainPlayer .songList .song .labels {
+  display: flex;
+  flex-flow: column wrap;
+  justify-content: space-evenly;
+  align-content: center;
+  align-items: stretch;
+  height: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+}
+#mainPlayer .songList .song .labels div {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  word-break: keep-all;
+  white-space: nowrap;
+}
+#mainPlayer .songList .song .labels div.primaryLabel {
+  font-size: 1.2em;
+}
+#mainPlayer .songList .song .labels div.secondaryLabel {
+  font-size: 1em;
+  color: #bbb;
+  font-style: italic;
+  padding-bottom: 0.2em;
+}
+#mainPlayer .playlists {
+  position: absolute;
+  top: 48px;
+  right: 0;
+  height: calc(100% - 176px - 48px);
+  width: 300px;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  background-color: rgba(0, 0, 0, 0.7);
+  color: #eee;
+  display: inline-block;
+}
+#mainPlayer .playlists .list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+#mainPlayer .playlists .list .listItem {
+  padding: 8px 12px;
+  background-color: rgba(0, 0, 0, 0);
+  cursor: pointer;
+  user-select: none;
+}
+#mainPlayer .playlists .list .listItem:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+#mainPlayer .playlists .list .listItem.add {
+  text-align: center;
+  font-weight: bold;
+}
+#mainPlayer .bottomPanel {
+  position: absolute;
+  bottom: 0;
+  height: 176px;
+  width: 100%;
+  background-color: rgba(0, 0, 0, 0.8);
+  box-sizing: border-box;
+  border: 2px solid rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+  border-left: 0;
+  border-right: 0;
+  border-bottom: 0;
+  padding-bottom: 8px;
+  background: linear-gradient(to bottom right, rgba(0, 0, 0, 0.8), rgba(0, 0, 0, 0.95));
+  color: #eee;
+  display: grid;
+  align-items: center;
+  padding: 0 0;
+  box-sizing: border-box;
+  grid-template-columns: 32px calc((100% - 240px) / 2 - 32px) 240px calc((100% - 240px) / 2 - 32px) 32px;
+  grid-template-rows: 20px auto auto 8px 76px;
+  grid-template-areas: "leftpadding a controls b rightpadding" "leftpadding primaryLabel controls misc rightpadding" "leftpadding secondaryLabel controls time rightpadding" "leftpadding c controls d rightpadding" "wavebar wavebar wavebar wavebar wavebar";
+}
+#mainPlayer .bottomPanel .primaryLabel {
+  margin-right: auto;
+  grid-area: primaryLabel;
+  font-size: 1.7em;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  width: 100%;
+}
+#mainPlayer .bottomPanel .secondaryLabel {
+  margin-right: auto;
+  grid-area: secondaryLabel;
+  color: #aaa;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  width: 100%;
+}
+#mainPlayer .bottomPanel .songLength {
+  grid-area: time;
+  margin-left: auto;
+}
+#mainPlayer .bottomPanel .misc {
+  grid-area: misc;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+#mainPlayer .bottomPanel .misc .volume {
+  -webkit-appearance: none;
+  /* Hides the slider so that custom slider can be made */
+  background: transparent;
+  /* Otherwise white in Chrome */
+  height: 32px;
+  cursor: pointer;
+  opacity: 0.7;
+  width: 50%;
+  margin: 0;
+}
+#mainPlayer .bottomPanel .misc .volume:hover {
+  opacity: 1;
+}
+#mainPlayer .bottomPanel .misc .volume::-webkit-slider-thumb {
+  -webkit-appearance: none;
+}
+#mainPlayer .bottomPanel .misc .volume:focus {
+  outline: none;
+  /* Removes the blue border. You should probably do some kind of focus styling for accessibility reasons though. */
+}
+#mainPlayer .bottomPanel .misc .volume::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  border: 1px solid #333;
+  height: 24px;
+  width: 24px;
+  padding: 0;
+  box-sizing: border-box;
+  border-radius: 100%;
+  background: rgba(255, 255, 255, 0.9);
+  margin-top: -8px;
+  /* You need to specify a margin in Chrome, but in Firefox and IE it is automatic */
+}
+#mainPlayer .bottomPanel .misc .volume::-webkit-slider-runnable-track {
+  width: 100%;
+  height: 8.4px;
+  cursor: pointer;
+  background: rgba(50, 50, 50, 0.9);
+  border-radius: 4px;
+  border: 0;
+  border-right: 12px solid tra;
+}
+#mainPlayer .bottomPanel .misc .shuffle {
+  background-image: url("../img/shuffle.svg");
+  opacity: 0.3;
+  height: 32px;
+  width: 32px;
+  margin: 0;
+  padding: 0;
+  margin-left: 16px;
+}
+#mainPlayer .bottomPanel .misc .shuffle:hover, #mainPlayer .bottomPanel .misc .shuffle.active {
+  opacity: 0.9;
+}
+#mainPlayer .bottomPanel .songControls {
+  grid-area: controls;
+  background-color: transparent;
+  overflow: hidden;
+  color: #eee;
+  height: 100%;
+  display: flex;
+  flex-flow: row wrap;
+  justify-content: center;
+  align-items: center;
+  float: left;
+  padding-top: 4px;
+  box-sizing: border-box;
+}
+#mainPlayer .bottomPanel .songControls .playPause {
+  width: 64px;
+  height: 64px;
+}
+#mainPlayer .bottomPanel .songControls .play {
+  background-image: url("../img/play.svg");
+}
+#mainPlayer .bottomPanel .songControls .pause {
+  background-image: url("../img/pause.svg");
+}
+#mainPlayer .bottomPanel .songControls .next {
+  background-image: url("../img/forward.svg");
+}
+#mainPlayer .bottomPanel .songControls .previous {
+  background-image: url("../img/backward.svg");
+}
+#mainPlayer .bottomPanel .wavebar {
+  grid-area: wavebar;
+  width: 100%;
+  background-color: transparent;
+  overflow: hidden;
+  height: 76px;
+  cursor: pointer;
+  padding-bottom: 10px;
+}
+
+.albumArt {
+  filter: blur(15px);
+  background-size: cover;
+  background-position: center;
+  z-index: -1001;
+}
+
+.albumOverlay {
+  background-color: rgba(0, 0, 0, 0.9);
+  z-index: -1000;
+}
+
+.spectrum {
+  z-index: -1;
+  opacity: 0.7;
+  height: calc(100% - 176px - 48px);
+  position: absolute;
+  top: 48px;
+  left: 0;
+  width: 100%;
+  background-color: transparent;
+}
+.spectrum canvas {
+  opacity: 0.2;
+}
+
+.loading {
+  position: absolute;
+  left: calc(50% - 300px / 2);
+  top: 40%;
+  transform: translate(-50%, -50%);
+  opacity: 0.2;
+}
+
+.svgButton {
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  width: 48px;
+  height: 48px;
+  background-color: transparent;
+  border: 0;
+  margin: 0 12px;
+  opacity: 0.8;
+  cursor: pointer;
+}
+.svgButton:hover {
+  opacity: 1;
+}
+
+/*# sourceMappingURL=style.css.map */

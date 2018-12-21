@@ -1,0 +1,39 @@
+{
+  "name": "electron-quick-start-typescript",
+  "version": "1.0.0",
+  "description": "A minimal Electron application written with Typescript",
+  "scripts": {
+    "build": "tsc",
+    "watchtsc": "tsc -w",
+    "watchsass": "sass --watch style/style.scss style/style.css",
+    "watch": "npm-run-all watchtsc watchsass",
+    "lint": "tslint -c tslint.json -p tsconfig.json",
+    "start": "electron ./dist/main.js"
+  },
+  "repository": "https://github.com/electron/electron-quick-start-typescript",
+  "keywords": [
+    "Electron",
+    "quick",
+    "start",
+    "tutorial",
+    "demo",
+    "typescript"
+  ],
+  "author": "GitHub",
+  "license": "CC0-1.0",
+  "devDependencies": {
+    "@types/chokidar": "^1.7.5",
+    "chokidar": "^2.0.4",
+    "clubber": "^1.7.1",
+    "electron": "4.0.0-beta.8",
+    "music-metadata": "^3.2.4",
+    "node-dir": "^0.1.17",
+    "npm-run-all": "^4.1.5",
+    "tslint": "^5.10.0",
+    "typescript": "^3.3.0-dev.20181201",
+    "wavesurfer.js": "^2.1.1"
+  },
+  "dependencies": {
+    "@types/node": "^10.12.11"
+  }
+}
