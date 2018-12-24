@@ -1,5 +1,5 @@
 import { Song, Metadata } from "./song";
-import { fileExists, endsWith, getCacheFilename, readCacheFile, getFileId, writeCacheFile, mergeSorted, emptyFn, array_remove, array_insert, array_copy, array_shuffle, array_contains, SortFunction, array_insert_random, sign, array_last, array_swap, getUserDataPath, array_item_at } from "./util";
+import { fileExists, endsWith, getCacheFilename, readCacheFile, getFileId, writeCacheFile, mergeSorted, emptyFn, array_remove, array_insert, array_copy, array_shuffle, array_contains, SortFunction, array_insert_random, sign, array_last, array_swap, getUserDataPath, array_item_at, bigintStat } from "./util";
 import { Widget } from "./widget";
 const dir = require("node-dir");
 import * as fs from "fs";
@@ -205,7 +205,7 @@ export class Songs extends Widget
 
         this.metadata = JSON.parse(data);
         
-        SafeWriter.bigintStat(this.cacheFilename, (err, stat) =>
+        bigintStat(this.cacheFilename, (err, stat) =>
         {
             if (err)
             {
@@ -682,7 +682,7 @@ export class Songs extends Widget
 
         filenames.forEach(filename =>
         {
-            SafeWriter.bigintStat(filename, 
+            bigintStat(filename, 
                 (err : Error, stat : fs.Stats) =>
                 {
                     if (err)
@@ -851,7 +851,7 @@ export class Songs extends Widget
             return;
         }
         
-        SafeWriter.bigintStat(filename, (err : Error, stat : fs.Stats) =>
+        bigintStat(filename, (err : Error, stat : fs.Stats) =>
         {
             if (err)
             {
@@ -880,7 +880,7 @@ export class Songs extends Widget
     {
         filename = npath.normalize(filename);
         
-        SafeWriter.bigintStat(filename, (err : Error, stat : fs.Stats) =>
+        bigintStat(filename, (err : Error, stat : fs.Stats) =>
         {
             if (err)
             {

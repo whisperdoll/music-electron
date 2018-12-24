@@ -5,6 +5,11 @@ import { SafeWriter } from "./safewriter";
 
 export type SortFunction<T> = (a : T, b : T) => boolean;
 
+export function isFileNotFoundError(err : NodeJS.ErrnoException) : boolean
+{
+    return err.code === "ENOENT";
+}
+
 export function fileExists(filename : string) : boolean
 {
     return fs.existsSync(filename);
@@ -98,9 +103,19 @@ export function endsWith(str : string, endsWith : string) : boolean
     return str.substr(str.length - endsWith.length) === endsWith;
 }
 
+export function bigintStat(filename : string, cb : (err : Error, stat : fs.Stats) => void)
+{
+    (fs as any).stat(filename, { bigint: true }, cb);
+}
+
+export function bigintStatSync(filename : string) : fs.Stats
+{
+    return (fs as any).statSync(filename,  { bigint: true });
+}
+
 export function getFileId(filename : string, callback : (id : string) => void)
 {
-    SafeWriter.bigintStat(filename, (err : Error, stat : fs.Stats) =>
+    bigintStat(filename, (err : Error, stat : fs.Stats) =>
     {
         if (err)
         {
@@ -109,6 +124,11 @@ export function getFileId(filename : string, callback : (id : string) => void)
         
         callback(stat.ino.toString());
     });
+}
+
+export function getFileIdSync(filename : string) : string
+{
+    return bigintStatSync(filename).ino.toString();
 }
     
 export function getUserDataPath() : string
@@ -204,6 +224,21 @@ export function array_remove<T>(array : T[], item : T) : { item : T, index : num
     }
 
     return { item, index: -1, existed: false };
+}
+
+export function array_remove_all<T>(array : T[], item : T) : { item : T, indexes : number[], existed : boolean }
+{
+    let indexes = [];
+
+    let index;
+
+    while ((index = array.indexOf(item)) !== -1)
+    {
+        indexes.push(index);
+        array.splice(index, 1);
+    }
+
+    return { item, indexes: indexes, existed: indexes.length > 0 };
 }
 
 export function array_item_at<T>(array : T[], index : number) : T

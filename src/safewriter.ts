@@ -1,5 +1,5 @@
 import * as fs from "fs";
-import { fileExists } from "./util";
+import { fileExists, bigintStat } from "./util";
 
 type CallbackFn = (err : Error) => void;
 type FsCallbackFn = (err : Error, stat : fs.Stats) => void;
@@ -8,11 +8,6 @@ type QueueItem = { data : string | Buffer, cb? : CallbackFn };
 export class SafeWriter
 {
     private static queues : { [fid : string] : QueueItem[] } = {};
-
-    public static bigintStat(filename : string, cb : FsCallbackFn)
-    {
-        (fs as any).stat(filename, { bigint: true }, cb);
-    }
 
     public static write(filename : string, data : string | Buffer, cb? : CallbackFn, fid? : string)
     {
@@ -59,7 +54,7 @@ export class SafeWriter
         }
         else
         {
-            this.bigintStat(filename, (err : Error, stat : fs.Stats) =>
+            bigintStat(filename, (err : Error, stat : fs.Stats) =>
             {
                 if (err)
                 {

@@ -1,8 +1,9 @@
 import { Widget } from "./widget";
-import { fileExists, getUserDataPath, getCacheFilename, getFileId, emptyFn, getRainbowColor, getCurrentMs } from "./util";
+import { fileExists, getUserDataPath, getFileId, createElement, getRainbowColor, getCurrentMs, array_contains, isFileNotFoundError, getFileIdSync, array_remove_all } from "./util";
 import * as path from "path"
 import * as fs from "fs"
 import { SafeWriter } from "./safewriter";
+import { FunctionQueue } from "./functionqueue";
 
 const WaveSurfer = require("wavesurfer.js");
 
@@ -10,9 +11,11 @@ export class Player extends Widget
 {
     private wavesurfer : any;
     private currentFilename : string = "";
+    private currentFid : string = "";
     private lastTime : number;
     private listenedMs : number;
     private listenedSwitch : boolean = false;
+    private wantingToCacheFids : string[] = [];
 
     constructor(container : HTMLElement)
     {
@@ -30,6 +33,32 @@ export class Player extends Widget
         {
             fs.mkdirSync(this.cachePath);
         }
+
+        /*this.cachingQueue = new FunctionQueue(3, (cb : Function, filename : string, fid : string) =>
+        {
+            let ws = WaveSurfer.create({
+                container: createElement("div"),
+                closeAudioContext: true
+            });
+
+            ws.on("ready", () =>
+            {
+                let str = ws.exportPCM(undefined, undefined, true, undefined);
+                SafeWriter.write(this.getCacheFilename(fid), str, (err) =>
+                {
+                    if (err)
+                    {
+                        throw err;
+                    }
+
+                    console.log("wrote waveform cache for " + filename);
+                    ws.destroy();
+                    cb();
+                }, fid);
+            });
+
+            ws.load(filename);
+        });*/
 
         this.wavesurfer = WaveSurfer.create({
             container: this.container,
@@ -53,6 +82,14 @@ export class Player extends Widget
             this.wavesurfer.play();
             this.emitEvent("play");
             this.emitEvent("load");
+        });
+
+        this.wavesurfer.on("waveform-ready", () =>
+        {
+            if (array_remove_all(this.wantingToCacheFids, this.currentFid).existed)
+            {
+                this.cacheWaveform(this.currentFilename, this.currentFid);
+            }
         });
 
         this.wavesurfer.on("finish", () =>
@@ -115,29 +152,23 @@ export class Player extends Widget
         if (filename && filename !== this.currentFilename)
         {
             this.currentFilename = filename;
+            this.currentFid = getFileIdSync(this.currentFilename);
 
-            getFileId(this.currentFilename, fid =>
+            let data : string;
+
+            try
             {
-                fs.readFile(this.getCacheFilename(fid), "utf8", (err, data) =>
+                data = fs.readFileSync(this.getCacheFilename(this.currentFid), "utf8");
+                this.wavesurfer.load(filename, JSON.parse(data));
+            }
+            catch (err)
+            {
+                if (isFileNotFoundError(err))
                 {
-                    if (err)
-                    {
-                        if (err.code === "ENOENT") // file not found
-                        {
-                            this.cacheWaveform(fid);
-                            this.wavesurfer.load(filename);
-                        }
-                        else
-                        {
-                            throw err;
-                        }
-                    }
-                    else
-                    {
-                        this.wavesurfer.load(filename, JSON.parse(data));
-                    }
-                });
-            });
+                    this.wavesurfer.load(filename);
+                    this.wantingToCacheFids.push(this.currentFid);
+                }
+            }
 
             return true;
         }
@@ -258,10 +289,10 @@ export class Player extends Widget
         return mins + ":" + secs;
     }
 
-    private cacheWaveform(fid : string) : void
+    private cacheWaveform(filename : string, fid : string) : void
     {
-        //this.wavesurfer.un("waveform-ready");
         let str = this.wavesurfer.exportPCM(undefined, undefined, true, undefined);
-        SafeWriter.write(this.getCacheFilename(fid), str, undefined, fid);
+        fs.writeFileSync(this.getCacheFilename(fid), str, "utf8");
+        console.log("cached waveform for " + filename);
     }
 }
