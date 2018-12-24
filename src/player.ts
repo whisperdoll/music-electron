@@ -16,6 +16,8 @@ export class Player extends Widget
     private listenedMs : number;
     private listenedSwitch : boolean = false;
     private wantingToCacheFids : string[] = [];
+    private _playNext : string;
+    private awaitingPlayback : boolean = false;
 
     constructor(container : HTMLElement)
     {
@@ -80,7 +82,6 @@ export class Player extends Widget
             this.listenedMs = 0;
             this.listenedSwitch = false;
             this.wavesurfer.play();
-            this.emitEvent("play");
             this.emitEvent("load");
         });
 
@@ -113,12 +114,31 @@ export class Player extends Widget
 
                 this.emitEvent("step");
             }
+
+            if (this.awaitingPlayback && this.trulyPlaying)
+            {
+                this.awaitingPlayback = false;
+                
+                if (this._playNext)
+                {
+                    let n = this._playNext;
+                    this._playNext = null;
+                    this.play(n);
+                }
+                
+                this.emitEvent("play");
+            }
         });
     }
 
     public get mediaElement() : HTMLMediaElement
     {
         return this.wavesurfer.backend.media;
+    }
+
+    public get trulyPlaying() : boolean
+    {
+        return this.mediaElement.currentTime > 0 && !this.mediaElement.paused && !this.mediaElement.ended && this.mediaElement.readyState > 2;
     }
 
     private get cachePath() : string
@@ -149,10 +169,20 @@ export class Player extends Widget
 
     public play(filename? : string, restart : boolean = false) : boolean
     {
+        if (this.awaitingPlayback)
+        {
+            this._playNext = filename;
+            //console.log("not playing: " + filename);
+            return true;
+        }
+
+        //console.log("actually playing: " + filename);
+
         if (filename && filename !== this.currentFilename)
         {
             this.currentFilename = filename;
             this.currentFid = getFileIdSync(this.currentFilename);
+            this.awaitingPlayback = true;
 
             let data : string;
 
@@ -178,6 +208,8 @@ export class Player extends Widget
         }
         else
         {
+            this.awaitingPlayback = true;
+
             if (restart)
             {
                 this.seekMs(0);
@@ -187,7 +219,6 @@ export class Player extends Widget
             
             this.lastTime = getCurrentMs();
             this.wavesurfer.play();
-            this.emitEvent("play");
             return true;
         }
     }
@@ -276,7 +307,6 @@ export class Player extends Widget
             mins = nmins.toString();
         }
 
-
         if (secs.length === 1)
         {
             secs = "0" + secs;
@@ -293,6 +323,6 @@ export class Player extends Widget
     {
         let str = this.wavesurfer.exportPCM(undefined, undefined, true, undefined);
         fs.writeFileSync(this.getCacheFilename(fid), str, "utf8");
-        console.log("cached waveform for " + filename);
+        // console.log("cached waveform for " + filename);
     }
 }

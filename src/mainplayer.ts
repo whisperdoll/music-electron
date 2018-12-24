@@ -309,14 +309,14 @@ export class MainPlayer extends Widget
 
         this.player.on("listencount", () =>
         {
-            console.log("i'm dying");
+            // console.log("i'm dying");
             this.currentSong.metadata.plays++;
             Songs.writeCache();
         });
 
         this.filter.onpreview = (filter) =>
         {
-            console.log("preview: " + filter);
+            // console.log("preview: " + filter);
             this.songs.previewFilter(filter, true);
         };
 
@@ -384,10 +384,10 @@ export class MainPlayer extends Widget
 
     private promptRename() : void
     {
-        console.log("hey- o!!!");
+        // console.log("hey- o!!!");
         if (this.songs.currentSelection.length > 0)
         {
-            console.log("hHELP!!");
+            // console.log("hHELP!!");
             this.renameDialog.show(this.songs.currentSelection);
         }
     }
