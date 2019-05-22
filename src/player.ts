@@ -78,6 +78,7 @@ export class Player extends Widget
 
         this.wavesurfer.on("ready", () =>
         {
+            console.log("ready: " + this.currentFilename);
             this.lastTime = getCurrentMs();
             this.listenedMs = 0;
             this.listenedSwitch = false;
@@ -100,6 +101,12 @@ export class Player extends Widget
 
         this.wavesurfer.on("audioprocess", () =>
         {
+            this.emitEvent("step");
+        });
+
+        setInterval(() => {
+            //console.log(this.awaitingPlayback, this.mediaElement.currentTime > 0, !this.mediaElement.paused, !this.mediaElement.ended, this.mediaElement.readyState > 2, this.currentFilename);
+
             if (!this.listenedSwitch)
             {
                 let elapsed = getCurrentMs() - this.lastTime;
@@ -111,12 +118,11 @@ export class Player extends Widget
                     this.emitEvent("listencount");
                     this.listenedSwitch = true;
                 }
-
-                this.emitEvent("step");
             }
 
             if (this.awaitingPlayback && this.trulyPlaying)
             {
+                console.log("awaitingplayback gone: " + this.currentFilename);
                 this.awaitingPlayback = false;
                 
                 if (this._playNext)
@@ -128,7 +134,7 @@ export class Player extends Widget
                 
                 this.emitEvent("play");
             }
-        });
+        }, 1000);
     }
 
     public get mediaElement() : HTMLMediaElement
@@ -172,30 +178,31 @@ export class Player extends Widget
         if (this.awaitingPlayback)
         {
             this._playNext = filename;
-            //console.log("not playing: " + filename);
+            console.log("not playing: " + filename);
             return true;
         }
 
-        //console.log("actually playing: " + filename);
+        console.log("actually playing: " + filename);
 
         if (filename && filename !== this.currentFilename)
         {
             this.currentFilename = filename;
             this.currentFid = getFileIdSync(this.currentFilename);
             this.awaitingPlayback = true;
+            console.log("now awaiting playback: " + this.currentFilename);
 
             let data : string;
 
             try
             {
                 data = fs.readFileSync(this.getCacheFilename(this.currentFid), "utf8");
-                this.wavesurfer.load(filename, JSON.parse(data));
+                this.wavesurfer.load(filename.replace(/\#/g, "%23"), JSON.parse(data));
             }
             catch (err)
             {
                 if (isFileNotFoundError(err))
                 {
-                    this.wavesurfer.load(filename);
+                    this.wavesurfer.load(filename.replace(/\#/g, "%23"));
                     this.wantingToCacheFids.push(this.currentFid);
                 }
             }
@@ -209,6 +216,7 @@ export class Player extends Widget
         else
         {
             this.awaitingPlayback = true;
+            console.log("now awaiting playback2: " + this.currentFilename);
 
             if (restart)
             {

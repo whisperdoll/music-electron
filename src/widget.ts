@@ -39,7 +39,7 @@ export class Widget extends EventClass
         this.container.style.display = "none";
     }
 
-    public appendChild(...children : (HTMLElement | Widget)[]) : void
+    public appendChild(...children : (Node | Widget)[]) : void
     {
         if (children.length === 1)
         {
@@ -58,9 +58,9 @@ export class Widget extends EventClass
         }
     }
 
-    private appendHelper(parent : Node, child : (HTMLElement | Widget)) : void
+    private appendHelper(parent : Node, child : (Node | Widget)) : void
     {
-        if (child instanceof HTMLElement)
+        if (child instanceof Node)
         {
             parent.appendChild(child);
         }
@@ -68,6 +68,11 @@ export class Widget extends EventClass
         {
             parent.appendChild(child.container);
         }
+    }
+
+    public appendHTML(html : string) : void
+    {
+        this.contentContainer.innerHTML += html;
     }
 
     public removeChild(child : HTMLElement | Widget) : boolean

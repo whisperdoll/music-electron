@@ -2,12 +2,26 @@ import * as electron from "electron"
 import * as path from "path"
 import * as fs from "fs"
 import { SafeWriter } from "./safewriter";
+let exec = require("child_process").exec;
 
 export type SortFunction<T> = (a : T, b : T) => boolean;
 
 export function isFileNotFoundError(err : NodeJS.ErrnoException) : boolean
 {
     return err.code === "ENOENT";
+}
+
+export function isWin32() : boolean
+{
+    return process.platform === "win32";
+}
+
+export function revealInExplorer(filename : string) : void
+{   
+    if (isWin32())
+    {
+        exec("explorer /select,\"" + filename.replace(/\//g, "\\") + '"');
+    }
 }
 
 export function fileExists(filename : string) : boolean
@@ -337,6 +351,21 @@ export function array_swap<T>(array : T[], a : number | T, b : number | T) : voi
     let temp = array[a];
     array[a] = array[b];
     array[b] = temp;
+}
+
+export function array_ensureOne<T>(array : T[], item : T) : { item : T, index : number, existed: boolean }
+{
+    let i = array.indexOf(item);
+
+    if (i === -1)
+    {
+        array.push(item);
+        return { item, index: array.length - 1, existed: false };
+    }
+    else
+    {
+        return { item, index: i, existed: true };
+    }
 }
 
 export function stopProp(e : MouseEvent) : void

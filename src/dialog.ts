@@ -5,7 +5,7 @@ export class Dialog extends Widget
 {
     protected dialog : HTMLElement;
 
-    constructor()
+    constructor(hideOnBackdropClick : boolean = true)
     {
         super("dialog-backdrop");
 
@@ -14,10 +14,13 @@ export class Dialog extends Widget
         this.container.appendChild(this.dialog);
         this.contentContainer = this.dialog;
 
-        this.container.addEventListener("click", () =>
+        if (hideOnBackdropClick)
         {
-            this.hide();
-        });
+            this.container.addEventListener("click", () =>
+            {
+                this.hide();
+            });
+        }
 
         this.hide();
     }

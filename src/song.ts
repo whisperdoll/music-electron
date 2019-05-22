@@ -5,6 +5,7 @@ import * as electron from "electron";
 import * as fs from "fs";
 import * as path from "path";
 import { SafeWriter } from "./safewriter";
+import { EventClass } from "./eventclass";
 
 export interface Metadata
 {
@@ -17,7 +18,7 @@ export interface Metadata
     track : number
 }
 
-export class Song extends Widget
+export class Song extends EventClass
 {
     private _filename : string;
     public metadata : Metadata;
@@ -25,45 +26,28 @@ export class Song extends Widget
     public tags : string[];
     private filterList : string[];
 
-    private thumbnail : HTMLImageElement;
-    private primaryLabel : HTMLElement;
-    private secondaryLabel : HTMLElement;
     public stats : fs.Stats;
+    private _loaded : boolean = false;
 
     constructor(filename : string, stats : fs.Stats, metadata? : Metadata)
     {
-        super("song");
+        super();
 
         this.createEvent("load");
-        this.createEvent("click");
-        this.createEvent("dblclick");
-        this.createEvent("rightclick");
-        this.createEvent("mousedown");
+        this.on("load", () =>
+        {
+            this._loaded = true;
+        });
 
         this.tags = [];
         this.metadata = metadata;
         this.stats = stats;
         this._filename = path.normalize(filename);
+    }
 
-        this.container.addEventListener("click", (e) =>
-        {
-            this.emitEvent("click", this, e);
-        });
-
-        this.container.addEventListener("dblclick", (e) =>
-        {
-            this.emitEvent("dblclick", this, e);
-        });
-
-        this.container.addEventListener("contextmenu", e =>
-        {
-            this.emitEvent("rightclick", this, e);
-        });
-
-        this.container.addEventListener("mousedown", e =>
-        {
-            this.emitEvent("mousedown", this, e);
-        });
+    public get loaded() : boolean
+    {
+        return this._loaded;
     }
 
     public get fid() : string
@@ -92,49 +76,7 @@ export class Song extends Widget
     public renameShallow(newFilename : string)
     {
         this._filename = newFilename;
-    }
-
-    private construct(callback? : Function) : void
-    {
-        this.container.innerHTML = "";
-        let frag = document.createDocumentFragment();
-
-        //console.time("creating thumbnail for " + this._filename);
-        this.thumbnail = <HTMLImageElement>document.createElement("img");
-        this.thumbnail.className = "thumbnail";
-        (this.thumbnail.onload as any) = callback.bind(this);
-        (this.thumbnail.onerror as any) = callback.bind(this);
-        frag.appendChild(this.thumbnail);
-        //console.timeEnd("creating thumbnail for " + this._filename);
-
-        let shadow = createElement("div", "shadow");
-        frag.appendChild(shadow);
-        
-        let labels = createElement("div", "labels");
-        
-        //console.time("creating primary label for " + this._filename);
-        this.primaryLabel = document.createElement("div");
-        this.primaryLabel.className = "primaryLabel";
-        labels.appendChild(this.primaryLabel);
-        //console.timeEnd("creating primary label for " + this._filename);
-
-        //console.time("creating secondary label for " + this._filename);
-        this.secondaryLabel = document.createElement("div");
-        this.secondaryLabel.className = "secondaryLabel";
-        labels.appendChild(this.secondaryLabel);
-
-        frag.appendChild(labels);
-        //console.timeEnd("creating secondary label for " + this._filename);
-
-        this.updateContainer();
-        this.container.appendChild(frag);
-    }
-
-    public updateContainer()
-    {
-        this.thumbnail.src = this.metadata.picture || "img/default.png";
-        this.primaryLabel.innerText = this.metadata.title;
-        this.secondaryLabel.innerText = this.metadata.artist + " — " + this.metadata.album;
+        this.emitEvent("change");
     }
 
     public get filename() : string
@@ -156,10 +98,7 @@ export class Song extends Widget
             this.retrieveMetadata(() =>
             {
                 this.makeFilterList();
-                this.construct(() =>
-                {
-                    this.emitEvent("load");
-                });
+                this.emitEvent("load");
             });
         }
         else
@@ -169,11 +108,7 @@ export class Song extends Widget
             //console.timeEnd("make filter list for " + this._filename);
 
             //console.time("construct " + this._filename);
-            this.construct(() =>
-            {
-                //console.timeEnd("construct " + this._filename);
-                this.emitEvent("load");
-            });
+            this.emitEvent("load");
         }
     }
 
@@ -396,7 +331,6 @@ export class Song extends Widget
                 this.metadata.picture = "";
                 callback && callback();
             }
-            
         });
     }
 }

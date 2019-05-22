@@ -85,6 +85,23 @@ canvas
     }
 }
 
+#footer
+{
+    position:absolute;
+    left: 0;
+    bottom: 0;
+    right: 0;
+    height: 36px;
+    line-height: 36px;
+    color: white;
+    padding: 0 8px;
+    background: #555;
+    
+    font-size: 16px;
+    font-family: Helvetica;
+    z-index: 1;
+}
+
 #container, #mainPlayer, .albumArt, .dialog-backdrop, .spectrum > canvas, .albumOverlay
 {
     height: 100%;
@@ -344,6 +361,11 @@ canvas
             color: #eee;
             font-family: "Segoe UI";
             position: relative;
+
+            &.skipping .primaryLabel
+            {
+                text-decoration: line-through;
+            }
         
             &.even
             {

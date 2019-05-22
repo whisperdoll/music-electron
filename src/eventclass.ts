@@ -1,4 +1,4 @@
-import { array_remove } from "./util";
+import { array_remove, array_ensureOne } from "./util";
 
 export class EventClass
 {
@@ -17,8 +17,13 @@ export class EventClass
         }
     }
 
-    protected emitEvent(event : string, ...args : any) : void
+    protected emitEvent(event : string, ...args : any[]) : void
     {
+        if (!this.events.has(event))
+        {
+            throw "no such event: " + event;
+        }
+        
         this.events.get(event).forEach(fn => fn(...args));
     }
 
@@ -29,7 +34,10 @@ export class EventClass
             throw "no such event: " + event;
         }
 
-        this.events.get(event).push(fn);
+        if (array_ensureOne(this.events.get(event), fn).existed)
+        {
+            console.warn("duplicate function on event: " + event);
+        }
     }
 
     public once(event : string, fn : Function)

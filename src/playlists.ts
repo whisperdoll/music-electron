@@ -1,11 +1,12 @@
 import { Widget } from "./widget";
 import * as npath from "path";
-import { getUserDataPath, createElement, fileExists, array_remove, mergeSorted, array_contains } from "./util";
-import { Playlist } from "./songs";
+import { getUserDataPath, createElement, fileExists, array_remove, mergeSorted, array_contains, isFileNotFoundError } from "./util";
+import { Playlist, Songs } from "./songs";
 const dir = require("node-dir");
 import * as fs from "fs";
 import { SafeWriter } from "./safewriter";
 import { ContextMenu, ContextMenuItem } from "./contextmenu";
+//import mainWindow from "./main";
 
 export class Playlists extends Widget
 {

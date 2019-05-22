@@ -1,11 +1,12 @@
 import { Song, Metadata } from "./song";
-import { fileExists, endsWith, getCacheFilename, readCacheFile, getFileId, writeCacheFile, mergeSorted, emptyFn, array_remove, array_insert, array_copy, array_shuffle, array_contains, SortFunction, array_insert_random, sign, array_last, array_swap, getUserDataPath, array_item_at, bigintStat } from "./util";
+import { fileExists, endsWith, getCacheFilename, readCacheFile, getFileId, writeCacheFile, mergeSorted, emptyFn, array_remove, array_insert, array_copy, array_shuffle, array_contains, SortFunction, array_insert_random, sign, array_last, array_swap, getUserDataPath, array_item_at, bigintStat, isFileNotFoundError, isWin32, revealInExplorer } from "./util";
 import { Widget } from "./widget";
 const dir = require("node-dir");
 import * as fs from "fs";
 import * as npath from "path";
 import * as chokidar from "chokidar";
 import { SafeWriter } from "./safewriter";
+import { EventClass } from "./eventclass";
 
 export type PlaylistType = "songList" | "pathList";
 
@@ -21,7 +22,7 @@ export interface Playlist
     filename? : string;
 }
 
-export class Songs extends Widget
+export class Songs extends EventClass
 {
     private static cacheFilename = npath.join(getUserDataPath(), "songs.cache");
     private static cacheFid : string;
@@ -40,12 +41,9 @@ export class Songs extends Widget
         ".m4a"
     ];
 
-    public currentSelection : Song[] = [];
-    private _renderedSongs : Song[] = [];
-
     private sourcePaths : string[] = [];
     private sortString : string;
-    private type : PlaylistType;
+    private _type : PlaylistType;
     private name : string;
     private filename : string;
 
@@ -55,40 +53,41 @@ export class Songs extends Widget
     private _filteredSongs : Song[] = [];
     private shuffledIndeces : number[] = [];
     private shuffled : boolean = false;
-    private _defaultSortFn : SortFunction<Song> = null;
+    private _defaultSortFn : SortFunction<Song> = this.noSort;
 
-    private sortFn : SortFunction<Song> = this.defaultSortFn;
+    private _sortFn : SortFunction<Song> = this.defaultSortFn;
 
     private watcher : chokidar.FSWatcher;
-
-    private dragging : boolean = false;
-    private dragOrigin : { x : number, y : number };
 
     private _loading : boolean = false;
     private _loaded : boolean = false;
     private _loadedFrom : Playlist = null;
 
-    constructor(o? : Playlist, container? : HTMLElement)
+    constructor()
     {
-        super(container || "songList");
+        super();
 
         this.createEvent("load");
         this.createEvent("loadstart");
-        this.createEvent("construct");
         this.createEvent("playlistupdate");
-        this.createEvent("click");
-        this.createEvent("dblclick");
-        this.createEvent("rightclick");
-
-        this.container.addEventListener("mousemove", this.mousemoveFn.bind(this));
-        this.container.addEventListener("mouseup", this.mouseupFn.bind(this));
+        this.createEvent("change");
+        this.createEvent("add");
+        this.createEvent("remove");
 
         if (!Songs.metadata)
         {
             Songs.loadMetadata();
         }
+    }
 
-        o && this.loadFromPlaylist(o);
+    public get sortFn()
+    {
+        return this._sortFn;
+    }
+
+    public get type()
+    {
+        return this._type;
     }
 
     public isPlaylist(playlist : Playlist) : boolean
@@ -96,7 +95,7 @@ export class Songs extends Widget
         return this._loadedFrom === playlist;
     }
 
-    public reset() : void
+    public reset() : boolean
     {
         if (this._loading)
         {
@@ -105,16 +104,10 @@ export class Songs extends Widget
                 this.reset();
             });
 
-            return;
+            return false;
         }
 
-        this.songs.forEach(song =>
-        {
-            this.removeChild(song);
-        });
-
         this.songs = [];
-        this.currentSelection = [];
         this.sourcePaths = [];
         this.sortString = null;
         this._filter = "";
@@ -123,10 +116,12 @@ export class Songs extends Widget
         this._loaded = false;
         this._loading = false;
         this.watcher = null;
-        this.dragging = false;
-        this.type = null;
+        this._type = null;
         this.filename = null;
         this._loadedFrom = null;
+        this.emitEvent("change");
+
+        return true;
     }
 
     public get loadedFrom() : Playlist
@@ -138,7 +133,7 @@ export class Songs extends Widget
     {
         this.reset();
         this._loading = true;
-        this.type = o.type;
+        this._type = o.type;
         this.filename = o.filename;
         this.name = o.name;
         this._loadedFrom = o;
@@ -152,10 +147,9 @@ export class Songs extends Widget
             {
                 if (!this.sortFn) // should be set from sortFromFilter above
                 {
-                    this.sortFn = this.noSort;
+                    this._sortFn = this.noSort;
                 }
                 this._defaultSortFn = this.sortFn;
-                this.emitEvent("construct");
                 this.filter(o.filter);
                 this._loaded = true;
                 this._loading = false;
@@ -164,17 +158,18 @@ export class Songs extends Widget
         }
         else if (o.type === "songList")
         { 
+            o.filenames = o.filenames.map(filename =>
+            {
+                return npath.normalize(filename);
+            });
+
             this.permFilter = "";
             this.loadFromFilenames(o.filenames, () =>
             {
-                this._defaultSortFn = (left, right) =>
+                this.sort((left, right) =>
                 {
-                    let lindex = this.songs.indexOf(left);
-                    return lindex !== -1 && lindex < this.songs.indexOf(right);
-                };
-
-                this.emitEvent("construct");
-                this.sort(this.sortFn, true);
+                    return o.filenames.indexOf(left.filename) < o.filenames.indexOf(right.filename);
+                }, true);
                 this._loaded = true;
                 this._loading = false;
                 this.emitEvent("load");
@@ -260,146 +255,17 @@ export class Songs extends Widget
         this.shuffled = false;
     }
 
-    public select(song : Song, removeOthers : boolean = false) : void
-    {
-        if (this.currentSelection.length > 0)
-        {
-            if (removeOthers)
-            {
-                this.deselectAll();
-                this.select(song);
-                return;
-            }
-            else if (this.currentSelection.indexOf(song) === -1)
-            {
-                array_insert(this.currentSelection, song, this.sortFn);
-                this.doSelectThings(song);
-            }
-        }
-        else
-        {
-            this.currentSelection = [ song ];
-            this.doSelectThings(song);
-        }
-    }
-
-    public shiftSelection(amount : number)
-    {
-        let newIndexes = [];
-
-        while (this.currentSelection.length > 0)
-        {
-            let song = this.currentSelection[0];
-            this.deselect(song, true);
-            newIndexes.push(this.renderedSongs.indexOf(song) + amount);
-        }
-
-        newIndexes.forEach(newIndex =>
-        {
-            this.select(array_item_at(this.renderedSongs, newIndex), false);
-        });
-    }
-
-    public selectRange(song1 : Song, song2: Song, removeOthers : boolean = false) : void
-    {
-        if (removeOthers)
-        {
-            this.deselectAll();
-        }
-
-        let sort = this.sortFn(song1, song2);
-        let firstSong : Song, lastSong : Song;
-
-        if (sort)
-        {
-            firstSong = song1;
-            lastSong = song2;
-        }
-        else
-        {
-            firstSong = song2;
-            lastSong = song1;
-        }
-
-        let firstIndex = this.renderedSongs.indexOf(firstSong);
-        let lastIndex = this.renderedSongs.indexOf(lastSong);
-
-        let toAdd = this.renderedSongs.slice(firstIndex, lastIndex + 1);
-        toAdd = toAdd.filter(song => this.currentSelection.indexOf(song) === -1);
-        toAdd.forEach(song =>
-        {
-            this.doSelectThings(song);
-        });
-
-        this.currentSelection.push(...toAdd);
-    }
-
-    public selectTo(song : Song) : void
-    {
-        if (this.currentSelection.length === 0)
-        {
-            this.select(song);
-        }
-        else if (this.currentSelection.length === 1)
-        {
-            this.selectRange(song, this.currentSelection[0]);
-        }
-        else
-        {
-            let firstIndex = this.renderedSongs.indexOf(this.currentSelection[0]);
-            let lastIndex = this.renderedSongs.indexOf(this.currentSelection[this.currentSelection.length - 1]);
-            let songIndex = this.renderedSongs.indexOf(song);
-            
-            if (songIndex >= firstIndex && songIndex <= lastIndex)
-            {
-                return;
-            }
-            else if (songIndex < firstIndex)
-            {
-                this.selectRange(song, this.renderedSongs[lastIndex]);
-            }
-            else
-            {
-                this.selectRange(song, this.renderedSongs[firstIndex]);
-            }
-        }
-    }
-
-    public selectAll() : void
-    {
-        this.selectRange(this.renderedSongs[0], array_last(this.renderedSongs));
-    }
-
-    public deselect(song : Song, remove : boolean = true) : void
-    {
-        song.container.classList.remove("selected");
-        if (remove)
-        {
-            array_remove(this.currentSelection, song);
-        }
-    }
-
-    public deselectAll() : void
-    {
-        this.currentSelection.forEach(song =>
-        {
-            song.container.classList.remove("selected");
-        });
-
-        this.currentSelection = [];
-    }
-
     public sort(sortFn? : (a : Song, b : Song) => boolean, rerender : boolean = true)
     {
         if (sortFn)
         {
             //console.log("apple", sortFn);
-            this.sortFn = sortFn;
+            this._sortFn = sortFn;
         }
 
         this.songs = this.getSorted(this.songs, this.sortFn);
         this._filteredSongs = this.getSorted(this.filteredSongs, this.sortFn);
-        rerender && this.render();
+        rerender && this.emitEvent("change");
     }
 
     public filter(filter : string, rerender : boolean = true) : void
@@ -410,7 +276,7 @@ export class Songs extends Widget
         this._filter = filter;
         this._previewFilter = null;
         this._filteredSongs = this.getFilterList(filter);
-        rerender && this.render();
+        rerender && this.emitEvent("change");
     }
 
     // returns filter without sorting info //
@@ -549,17 +415,12 @@ export class Songs extends Widget
     {
         filter = filter.toLowerCase();
         this._previewFilter = filter;
-        rerender && this.render();
+        rerender && this.emitEvent("change");
     }
 
     public get filteredSongs() : Song[]
     {
         return this._filteredSongs;
-    }
-
-    public get renderedSongs() : Song[]
-    {
-        return this._renderedSongs;
     }
 
     public findSongByFid(fid : string) : Song
@@ -636,7 +497,7 @@ export class Songs extends Widget
         }
     }
 
-    private loadFromFilenamesHelper(filenames : string[], frag : DocumentFragment, callback? : () => void)
+    private loadFromFilenamesHelper(filenames : string[], callback? : () => void)
     {
         let songCounter = 0;
         let numSongs = 0;
@@ -656,11 +517,6 @@ export class Songs extends Widget
 
             if (songCounter === numSongs)
             {
-                songsToAdd.forEach(song =>
-                {
-                    frag.appendChild(song.container);
-                });
-
                 Songs.writeCache((err) =>
                 {
                     if (err)
@@ -698,12 +554,10 @@ export class Songs extends Widget
 
     private loadFromFilenames(filenames : string[], callback? : () => void) : void
     {
-        let frag = document.createDocumentFragment();
-
-        this.loadFromFilenamesHelper(filenames, frag, callback);
+        this.loadFromFilenamesHelper(filenames, callback);
     }
 
-    private loadFromPathsHelper(path : string, frag : DocumentFragment, callback : () => void)
+    private loadFromPathsHelper(path : string, callback : () => void)
     {
         dir.files(path, (err : any, files : string[]) =>
         {
@@ -712,7 +566,7 @@ export class Songs extends Widget
                 throw err;
             }
 
-            this.loadFromFilenamesHelper(files, frag, callback);
+            this.loadFromFilenamesHelper(files, callback);
         });
     }
 
@@ -720,7 +574,6 @@ export class Songs extends Widget
     {
         let numPaths = paths.length;
         let pathCounter = 0;
-        let frag = document.createDocumentFragment();
 
         paths = paths.map(path => npath.normalize(path));
 
@@ -729,9 +582,7 @@ export class Songs extends Widget
             pathCounter++;
 
             if (pathCounter === numPaths)
-            {
-                this.container.appendChild(frag);
-                    
+            {                    
                 this.watcher = chokidar.watch(paths, {
                     ignoreInitial: true,
                     disableGlobbing: true,
@@ -758,7 +609,7 @@ export class Songs extends Widget
             }
             else
             {
-                this.loadFromPathsHelper(path, frag, check);
+                this.loadFromPathsHelper(path, check);
             }
         });
     }
@@ -766,12 +617,6 @@ export class Songs extends Widget
     public static writeCache(cb? : (err : Error) => void) : void
     {
         SafeWriter.write(this.cacheFilename, JSON.stringify(this.metadata), cb, this.cacheFid);
-    }
-
-    // called by selection functions //
-    private doSelectThings(song : Song)
-    {
-        song.container.classList.add("selected");
     }
 
     private getSorted(songs : Song[], sortFn? : (a : Song, b : Song) => boolean) : Song[]
@@ -803,10 +648,6 @@ export class Songs extends Widget
         }
 
         let song = new Song(filename, stat, metadata);
-        song.on("click", (song : Song, e : MouseEvent) => this.songClickFn(song, e));
-        song.on("mousedown", (song : Song, e : MouseEvent) => this.songMousedownFn(song, e));
-        song.on("dblclick", (song : Song, e : MouseEvent) => this.emitEvent("dblclick", song, e));
-        song.on("rightclick", (song : Song, e : MouseEvent) => this.emitEvent("rightclick", song, e));
         song.once("load", () =>
         {
             Songs.metadata[song.fid] = song.metadata;
@@ -819,8 +660,8 @@ export class Songs extends Widget
     {
         let existed = array_remove(this.songs, song).existed;
         array_remove(this._filteredSongs, song);
-        array_remove(this.currentSelection, song);
-        rerender && this.render();
+        this.emitEvent("remove", song);
+        rerender && this.emitEvent("change");
 
         return existed;
     }
@@ -829,7 +670,7 @@ export class Songs extends Widget
     {
         songs.forEach(song => this.removeSong(song, false));
         this.updateSourcePlaylist();
-        this.render();
+        this.emitEvent("change");
     }
 
     private updateSourcePlaylist() : void
@@ -865,12 +706,14 @@ export class Songs extends Widget
                 console.log("song added: " + filename);
                 this.makeSong(filename, stat, (song) =>
                 {
+                    this.emitEvent("add", song);
                     this.resortSong(song);
                 });
             }
             else
             {
                 console.log("song... added?: " + filename);
+                this.emitEvent("add", song);
                 this.resortSong(song);
             }
         });
@@ -902,7 +745,6 @@ export class Songs extends Widget
                 {
                     if (array_contains(this.songs, song))
                     {
-                        song.updateContainer();
                         this.resortSong(song);
                     }
                 });
@@ -954,119 +796,11 @@ export class Songs extends Widget
 
         //this.sort(this.sortFn, true);
 
-        this.render();
+        this.emitEvent("change");
         Songs.writeCache();
     }
 
-    // only to be called by song container's onclick //
-    private songClickFn(song : Song, e : MouseEvent) : void
-    {
-        e.stopPropagation();
-
-        if (e.shiftKey)
-        {
-            if (e.ctrlKey && this.currentSelection.length > 0)
-            {
-                let sorted = this.renderedSongs;
-
-                let getDist = (song1 : Song, song2 : Song) =>
-                {
-                    return Math.abs(sorted.indexOf(song1) - sorted.indexOf(song2));
-                }
-
-                let closest : Song = this.currentSelection[0];
-                let closestDist = getDist(song, closest);
-                
-                this.currentSelection.forEach(sSong =>
-                {
-                    let dist = getDist(sSong, song);
-                    if (dist < closestDist)
-                    {
-                        closest = sSong;
-                        closestDist = dist;
-                    }
-                });
-
-                this.selectRange(song, closest, false);
-            }
-            else
-            {
-                this.selectTo(song);
-            }
-        }
-        else if (e.ctrlKey)
-        {
-            if (array_contains(this.currentSelection, song))
-            {
-                this.deselect(song, true);
-            }
-            else
-            {
-                this.select(song, false);
-            }
-        }
-        else
-        {
-            this.select(song, true);
-        }
-
-        this.emitEvent("click", song, e);
-    }
-
-    private songMousedownFn(song : Song, e : MouseEvent) : void
-    {
-        if (array_contains(this.currentSelection, song) && this.type === "songList")
-        {
-            this.dragging = true;
-            this.dragOrigin = { x: e.clientX, y: e.clientY };
-        }
-    }
-
-    private mousemoveFn(e : MouseEvent)
-    {
-        if (this.dragging)
-        {
-            let dx = e.clientX - this.dragOrigin.x;
-            let dy = e.clientY - this.dragOrigin.y;
-            let h = this.songs[0].container.getBoundingClientRect().height;
-
-            if (dy >= h)
-            {
-                if (array_last(this.currentSelection).container.nextElementSibling)
-                {
-                    this.currentSelection.forEach(song =>
-                    {
-                        this.moveSong(song, ~~(dy / h));
-                    });
-
-                    dy %= h;
-                    this.dragOrigin.y = e.clientY - dy;
-                    this.render();
-                }
-            }
-            else if (dy <= -h)
-            {
-                if (this.currentSelection[0].container.previousElementSibling)
-                {
-                    this.currentSelection.forEach(song =>
-                    {
-                        this.moveSong(song, Math.ceil(dy / h));
-                    });
-
-                    dy = -((-dy) % h);
-                    this.dragOrigin.y = e.clientY - dy;
-                    this.render();
-                }
-            }
-        }
-    }
-
-    private mouseupFn() : void
-    {
-        this.dragging = false;
-    }
-
-    private moveSong(song : Song, amount : number) : boolean
+    public moveSong(song : Song, amount : number) : boolean
     {
         if (amount === 0) return true;
 
@@ -1106,10 +840,11 @@ export class Songs extends Widget
             amount++;
         }
 
+        this.emitEvent("change");
         return true;
     }
 
-    private getRenderList() : Song[]
+    public getRenderList() : Song[]
     {
         if (this._previewFilter)
         {
@@ -1140,27 +875,5 @@ export class Songs extends Widget
         {
             return song.matchesFilter(filter);
         });
-    }
-
-    private render() : void
-    {
-        this._renderedSongs = this.getRenderList();
-        console.log("rendering: " + this._renderedSongs.length + " songs");
-
-        this.container.innerHTML = "";
-        
-        this._renderedSongs.forEach((song, i) =>
-        {
-            if ((i & 1) === 0)
-            {
-                song.container.classList.add("even");
-            }
-            else
-            {
-                song.container.classList.remove("even");
-            }
-        });
-
-        this.appendChild(...this._renderedSongs);
     }
 }

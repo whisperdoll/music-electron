@@ -240,6 +240,9 @@ canvas {
   font-family: "Segoe UI";
   position: relative;
 }
+#mainPlayer .songList .song.skipping .primaryLabel {
+  text-decoration: line-through;
+}
 #mainPlayer .songList .song.even {
   background-color: rgba(0, 0, 0, 0.06);
 }

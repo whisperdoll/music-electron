@@ -3,7 +3,7 @@ import { Songs, Playlist } from "./songs";
 import { Player } from "./player";
 import { BottomBar } from "./bottombar";
 import { Filter } from "./filter";
-import { createElement, array_copy, array_contains, hideElement, showElement, array_last, element_scrollIntoViewIfNeeded } from "./util";
+import { createElement, array_copy, array_contains, hideElement, showElement, array_last, element_scrollIntoViewIfNeeded, array_remove_all, revealInExplorer } from "./util";
 import { Song } from "./song";
 import { RenameRule } from "./renamerule";
 import { ContextMenu, ContextMenuItem } from "./contextmenu";
@@ -12,11 +12,13 @@ import { Spectrum } from "./spectrum";
 import { PlaylistDialog } from "./playlistdialog";
 import { Playlists } from "./playlists";
 import { InputDialog } from "./inputdialog";
+import { SongsWidget } from "./songswidget";
+import { SongWidget } from "./songwidget";
 
 export class MainPlayer extends Widget
 {
     private filter : Filter;
-    private songs : Songs;
+    private songs : SongsWidget;
     private playlists : Playlists;
     private player : Player;
     private bottomBar : BottomBar;
@@ -27,12 +29,14 @@ export class MainPlayer extends Widget
     private playlistDialog : PlaylistDialog;
     private spectrum : Spectrum;
 
-    private currentSong : Song;
+    private currentSong : SongWidget;
     private songCountSwitch : boolean = false;
 
     private backgroundOverlay : HTMLElement;
     private backgroundPicture : HTMLElement;
     private loadingElement : HTMLImageElement;
+
+    private skipOnceSongs : SongWidget[] = [];
 
     constructor(container : HTMLElement)
     {
@@ -40,7 +44,7 @@ export class MainPlayer extends Widget
 
         this.filter = new Filter(createElement("div", "filter-container"));
         this.playlists = new Playlists(createElement("div", "playlists"));
-        this.songs = new Songs(undefined, createElement("div", "songList"));
+        this.songs = new SongsWidget(createElement("div", "songList"));
         this.bottomBar = new BottomBar(createElement("div", "bottomPanel"));
         this.player = new Player(this.bottomBar.wavebar);
         this.spectrum = new Spectrum();
@@ -80,6 +84,7 @@ export class MainPlayer extends Widget
         this.songMenu.addItem(new ContextMenuItem("Rename...", this.promptRename.bind(this)));
         this.songMenu.addItem(new ContextMenuItem("Edit rules...", this.editRules.bind(this)));
         this.songMenu.addItem(new ContextMenuItem("Reveal in explorer", this.revealInExplorer.bind(this)));
+        this.songMenu.addItem(new ContextMenuItem("Skip once", this.skipSongOnce.bind(this)));
 
         this.playlistMenu = new ContextMenu();
         let playListItem = new ContextMenuItem("Add to playlist");
@@ -152,15 +157,15 @@ export class MainPlayer extends Widget
                         playlist.filenames = [];
                     }
 
-                    if (this.songs.isPlaylist(playlist))
+                    if (this.songs.songs.isPlaylist(playlist))
                     {
                         window.alert("idiot");
                         return;
                     }
 
-                    this.songs.currentSelection.forEach(song =>
+                    this.songs.currentSelection.forEach(songWidget =>
                     {
-                        playlist.filenames.push(song.filename);
+                        playlist.filenames.push(songWidget.song.filename);
                     });
 
                     this.playlists.save(playlist);
@@ -219,15 +224,15 @@ export class MainPlayer extends Widget
 
         this.playlists.on("requestdelete", (playlist : Playlist) =>
         {
-            if (this.songs.isPlaylist(playlist))
+            if (this.songs.songs.isPlaylist(playlist))
             {
                 this.stopSong();
-                this.songs.reset();
+                this.songs.songs.reset();
                 this.bottomBar.reset();
             }
         });
 
-        this.songs.on("loadstart", () =>
+        this.songs.songs.on("loadstart", () =>
         {
             showElement(this.loadingElement);
         });
@@ -237,23 +242,23 @@ export class MainPlayer extends Widget
             hideElement(this.loadingElement);
         });
 
-        this.songs.on("playlistupdate", () =>
+        this.songs.songs.on("playlistupdate", () =>
         {
-            this.playlists.save(this.songs.loadedFrom);
-            this.playlists.updateLabels(this.songs.loadedFrom);
+            this.playlists.save(this.songs.songs.loadedFrom);
+            this.playlists.updateLabels(this.songs.songs.loadedFrom);
         });
 
-        this.songs.on("dblclick", (song : Song, e : MouseEvent) =>
+        this.songs.on("dblclick", (song : SongWidget, e : MouseEvent) =>
         {
             this.playSong(song, true);
         });
 
-        this.songs.on("click", (song : Song, e : MouseEvent) =>
+        this.songs.on("click", (song : SongWidget, e : MouseEvent) =>
         {
             // selection handled in songs.ts
         });
 
-        this.songs.on("rightclick", (song : Song, e : MouseEvent) =>
+        this.songs.on("rightclick", (song : SongWidget, e : MouseEvent) =>
         {
             if (this.songs.currentSelection.length <= 1 || !array_contains(this.songs.currentSelection, song))
             {
@@ -310,20 +315,20 @@ export class MainPlayer extends Widget
         this.player.on("listencount", () =>
         {
             // console.log("i'm dying");
-            this.currentSong.metadata.plays++;
+            this.currentSong.song.metadata.plays++;
             Songs.writeCache();
         });
 
         this.filter.onpreview = (filter) =>
         {
             // console.log("preview: " + filter);
-            this.songs.previewFilter(filter, true);
+            this.songs.songs.previewFilter(filter, true);
         };
 
         this.filter.onfilter = (filter) =>
         {
             //console.log("filter: " + filter);
-            this.songs.filter(filter);
+            this.songs.songs.filter(filter);
         };
 
         this.bottomBar.hookPlayer(this.player);
@@ -361,12 +366,12 @@ export class MainPlayer extends Widget
 
         this.bottomBar.on("shuffleon", () =>
         {
-            this.songs.shuffle();
+            this.songs.songs.shuffle();
         });
 
         this.bottomBar.on("shuffleoff", () =>
         {
-            this.songs.unshuffle();
+            this.songs.songs.unshuffle();
         });
     }
 
@@ -388,7 +393,7 @@ export class MainPlayer extends Widget
         if (this.songs.currentSelection.length > 0)
         {
             // console.log("hHELP!!");
-            this.renameDialog.show(this.songs.currentSelection);
+            this.renameDialog.show(this.songs.currentSelectionSongs);
         }
     }
 
@@ -399,12 +404,24 @@ export class MainPlayer extends Widget
 
     private revealInExplorer() : void
     {
+        if (this.songs.currentSelection.length > 0)
+        {
+            revealInExplorer(this.songs.currentSelection[0].song.filename);
+        }
+    }
 
+    private skipSongOnce() : void
+    {
+        this.skipOnceSongs.push(...this.songs.currentSelection);
+        this.songs.currentSelection.forEach(song =>
+        {
+            song.container.classList.add("skipping");
+        });
     }
 
     private removeFromPlaylist() : void
     {
-        this.songs.removeSongsFromPlaylist(...this.songs.currentSelection);   
+        this.songs.songs.removeSongsFromPlaylist(...this.songs.currentSelectionSongs);   
     }
 
     private scrollToCurrent() : void
@@ -434,22 +451,28 @@ export class MainPlayer extends Widget
         }
         else if (this.songs.currentSelection.length > 1)
         {
-            let fids = this.songs.currentSelection.map(song => "fid:" + song.fid);
+            let fids = this.songs.currentSelection.map(song => "fid:" + song.song.fid);
             let filterString = fids.join("|");
             this.filter.removeAllFilters();
             this.filter.addFilter(filterString);
-            return this.playSong(this.songs.filteredSongs[0]);
+            return this.playSong(this.songs.firstSong);
         }
     }
 
-    private playSong(song : Song, restart : boolean = false) : boolean
+    private playSong(song : SongWidget, restart : boolean = false) : boolean
     {
         if (!song)
         {
             return false;
         }
 
-        let success = this.player.play(song.filename, restart);
+        if (array_remove_all(this.skipOnceSongs, song).existed)
+        {
+            song.container.classList.remove("skipping");
+            return this.playSong(this.songs.songAfter(song));
+        }
+
+        let success = this.player.play(song.song.filename, restart);
 
         if (success)
         {
@@ -466,12 +489,12 @@ export class MainPlayer extends Widget
             this.currentSong = song;
             this.currentSong.container.classList.add("playing");
 
-            this.bottomBar.primaryString = song.metadata.title;
-            this.bottomBar.secondaryString = song.metadata.artist + " — " + song.metadata.album;
+            this.bottomBar.primaryString = song.song.metadata.title;
+            this.bottomBar.secondaryString = song.song.metadata.artist + " — " + song.song.metadata.album;
 
             // scroll
 
-            this.backgroundSrc = "url(" + JSON.stringify(song.metadata.picture) + ")";
+            this.backgroundSrc = "url(" + JSON.stringify(song.song.metadata.picture) + ")";
         }
 
         return success;
@@ -484,9 +507,9 @@ export class MainPlayer extends Widget
         this.bottomBar.reset();
     }
 
-    private playNext() : void
+    private playNext() : boolean
     {
-        this.playSong(this.songs.songAfter(this.currentSong));
+        return this.playSong(this.songs.songAfter(this.currentSong));
     }
 
     private playPrevious() : void
