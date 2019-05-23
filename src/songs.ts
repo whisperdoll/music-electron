@@ -8,20 +8,6 @@ import * as chokidar from "chokidar";
 import { SafeWriter } from "./safewriter";
 import { EventClass } from "./eventclass";
 
-export type PlaylistType = "songList" | "pathList";
-
-export interface Playlist
-{
-    [key : string] : any;
-
-    type : PlaylistType;
-    sourcePaths? : string[];
-    filter? : string;
-    filenames? : string[];
-    name : string;
-    filename? : string;
-}
-
 export class Songs extends EventClass
 {
     private static cacheFilename = npath.join(getUserDataPath(), "songs.cache");
@@ -41,12 +27,6 @@ export class Songs extends EventClass
         ".m4a"
     ];
 
-    private sourcePaths : string[] = [];
-    private sortString : string;
-    private _type : PlaylistType;
-    private name : string;
-    private filename : string;
-
     private permFilter : string = "";
     private _filter : string = "";
     private _previewFilter : string = "";
@@ -61,7 +41,6 @@ export class Songs extends EventClass
 
     private _loading : boolean = false;
     private _loaded : boolean = false;
-    private _loadedFrom : Playlist = null;
 
     constructor()
     {

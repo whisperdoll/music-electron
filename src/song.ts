@@ -6,32 +6,21 @@ import * as fs from "fs";
 import * as path from "path";
 import { SafeWriter } from "./safewriter";
 import { EventClass } from "./eventclass";
+import { Metadata, PlaylistItem } from "./playlistitem";
 
-export interface Metadata
-{
-    title : string,
-    artist : string,
-    album : string,
-    length : number,
-    picture : string,
-    plays : number,
-    track : number
-}
-
-export class Song extends EventClass
+export class Song extends PlaylistItem
 {
     private _filename : string;
     public metadata : Metadata;
-    private _metadata : Metadata; // to see what all is there later
+    private _metadata : Metadata; // to see what all is there later // what did he mean by this
     public tags : string[];
     private filterList : string[];
 
     public stats : fs.Stats;
-    private _loaded : boolean = false;
 
     constructor(filename : string, stats : fs.Stats, metadata? : Metadata)
     {
-        super();
+        super(metadata);
 
         this.createEvent("load");
         this.on("load", () =>
@@ -40,14 +29,8 @@ export class Song extends EventClass
         });
 
         this.tags = [];
-        this.metadata = metadata;
         this.stats = stats;
         this._filename = path.normalize(filename);
-    }
-
-    public get loaded() : boolean
-    {
-        return this._loaded;
     }
 
     public get fid() : string
