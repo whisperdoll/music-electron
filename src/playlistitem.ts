@@ -31,7 +31,12 @@ export abstract class PlaylistItem extends EventClass
             this.makeFilterList();
         });
 
-        this.id = 
+        this.id = PlaylistItem.genId();
+    }
+
+    private static genId() : string
+    {
+        return (this.idCounter++).toString();
     }
 
     public load() : void

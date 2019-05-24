@@ -45,6 +45,7 @@ export class Playlist extends EventClass
 
         this.createEvent("loadstart");
         this.createEvent("load");
+        this.createEvent("change");
 
         if (!Playlist.metadata)
         {

@@ -122,6 +122,10 @@ export class Song extends PlaylistItem
             let parts = filterPart.split(":");
             switch (parts[0])
             {
+                case "id":
+                {
+                    return this.id === parts[1];
+                }
                 case "fid":
                 {
                     return this.fid === parts[1];

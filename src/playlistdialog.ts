@@ -1,6 +1,6 @@
-import { Dialog } from "./dialog";
+/*import { Dialog } from "./dialog";
 import { InputDialog } from "./inputdialog";
-import { Playlist, PlaylistType } from "./playlist";
+import { Playlist } from "./playlist";
 import { createElement, createOptionElement, showElement, hideElement } from "./util";
 
 export class PlaylistDialog extends InputDialog<Playlist>
@@ -169,4 +169,4 @@ export class PlaylistDialog extends InputDialog<Playlist>
         
         this.emitEvent("return", ret);
     }
-}
+}*/

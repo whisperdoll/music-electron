@@ -37,6 +37,8 @@ export class ContextMenu extends Widget
         }
 
         super.show();
+
+        this.items.forEach(item => item.hideIfNecessary());
     }
 
     public set x(x : number)
@@ -74,12 +76,18 @@ export class ContextMenuItem extends Widget
     private textContainer : HTMLElement;
     private _subMenu : ContextMenu;
     public parent : ContextMenu;
+    public showCondition : () => boolean = () => true;
 
     public hint : any;
 
-    constructor(text : string, onclick : () => void = emptyFn)
+    constructor(text : string, onclick : () => void = emptyFn, showCondition? : () => boolean)
     {
         super("contextMenuItem");
+
+        if (showCondition)
+        {
+            this.showCondition = showCondition;
+        }
 
         this.textContainer = createElement("div", "text");
         this.container.appendChild(this.textContainer);
@@ -116,6 +124,18 @@ export class ContextMenuItem extends Widget
                 );
             }
         });
+    }
+
+    public hideIfNecessary() : void
+    {
+        if (this.showCondition())
+        {
+            this.show();
+        }
+        else
+        {
+            this.hide();
+        }
     }
 
     public get text() : string

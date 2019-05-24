@@ -18,15 +18,9 @@ export class PlaylistItemWidget extends Widget
         this.item = playlistItem;
 
         this.createEvent("load");
-        this.createEvent("click");
         this.createEvent("dblclick");
         this.createEvent("rightclick");
         this.createEvent("mousedown");
-
-        this.container.addEventListener("click", (e) =>
-        {
-            this.emitEvent("click", this, e);
-        });
 
         this.container.addEventListener("dblclick", (e) =>
         {

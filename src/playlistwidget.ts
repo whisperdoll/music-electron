@@ -28,8 +28,7 @@ export class PlaylistWidget extends Widget
 
         this.createEvent("loadstart");
         this.createEvent("construct");
-        this.createEvent("click");
-        this.createEvent("dblclick");
+        this.createEvent("dblclickitem");
         this.createEvent("rightclick");
 
         this.playlist = new Playlist();
@@ -39,6 +38,7 @@ export class PlaylistWidget extends Widget
 
         this.container.addEventListener("mousemove", this.mousemoveFn.bind(this));
         this.container.addEventListener("mouseup", this.mouseupFn.bind(this));
+        this.container.addEventListener("contextmenu", e => this.emitEvent("rightclick", e));
 
         this.zipOverlay = new Dialog(false);
         this.zipOverlay.appendHTML("Please wait,,,");
@@ -68,10 +68,8 @@ export class PlaylistWidget extends Widget
     private constructItemWidget(item : PlaylistItem) : PlaylistItemWidget
     {
         let itemWidget = new PlaylistItemWidget(item);
-        itemWidget.on("click", (itemWidget : PlaylistItemWidget, e : MouseEvent) => this.itemClickFn(itemWidget, e));
         itemWidget.on("mousedown", (itemWidget : PlaylistItemWidget, e : MouseEvent) => this.itemMousedownFn(itemWidget, e));
         itemWidget.on("dblclick", (itemWidget : PlaylistItemWidget, e : MouseEvent) => this.emitEvent("dblclick", itemWidget, e));
-        itemWidget.on("rightclick", (itemWidget : PlaylistItemWidget, e : MouseEvent) => this.emitEvent("rightclick", itemWidget, e));
         return itemWidget;
     }
 
@@ -330,11 +328,8 @@ export class PlaylistWidget extends Widget
         return this._renderedItems;
     }
 
-    // only to be called by item container's onclick //
-    private itemClickFn(item : PlaylistItemWidget, e : MouseEvent) : void
-    {
-        e.stopPropagation();
-
+    private itemMousedownFn(itemWidget : PlaylistItemWidget, e : MouseEvent) : void
+    {        
         if (e.shiftKey)
         {
             if (e.ctrlKey && this.currentSelection.length > 0)
@@ -347,11 +342,11 @@ export class PlaylistWidget extends Widget
                 }
 
                 let closest : PlaylistItemWidget = this.currentSelection[0];
-                let closestDist = getDist(item, closest);
+                let closestDist = getDist(itemWidget, closest);
                 
                 this.currentSelection.forEach(sSong =>
                 {
-                    let dist = getDist(sSong, item);
+                    let dist = getDist(sSong, itemWidget);
                     if (dist < closestDist)
                     {
                         closest = sSong;
@@ -359,36 +354,27 @@ export class PlaylistWidget extends Widget
                     }
                 });
 
-                this.selectRange(item, closest, false);
+                this.selectRange(itemWidget, closest, false);
             }
             else
             {
-                this.selectTo(item);
+                this.selectTo(itemWidget);
             }
         }
         else if (e.ctrlKey)
         {
-            if (array_contains(this.currentSelection, item))
+            if (array_contains(this.currentSelection, itemWidget))
             {
-                this.deselect(item, true);
+                this.deselect(itemWidget, true);
             }
             else
             {
-                this.select(item, false);
+                this.select(itemWidget, false);
             }
         }
         else
         {
-            this.select(item, true);
-        }
-
-        this.emitEvent("click", item, e);
-    }
-
-    private itemMousedownFn(itemWidget : PlaylistItemWidget, e : MouseEvent) : void
-    {
-        if (array_contains(this.currentSelection, itemWidget))
-        {
+            this.select(itemWidget, true);
             this.dragging = true;
             this.dragOrigin = { x: e.clientX, y: e.clientY };
         }

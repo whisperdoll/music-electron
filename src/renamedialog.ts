@@ -96,7 +96,7 @@ export class RenameDialog extends Dialog
 
         this.songs.forEach(song =>
         {
-            song.rename(RenameRule.getFilenameFor(song, rule), (err) =>
+            song.renameFile(RenameRule.getFilenameFor(song, rule), (err) =>
             {
                 this.onerr(err);
             });

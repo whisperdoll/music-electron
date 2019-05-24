@@ -9,7 +9,6 @@ import { RenameRule } from "./renamerule";
 import { ContextMenu, ContextMenuItem } from "./contextmenu";
 import { RenameDialog } from "./renamedialog";
 import { Spectrum } from "./spectrum";
-import { PlaylistDialog } from "./playlistdialog";
 import { InputDialog } from "./inputdialog";
 import { PlaylistWidget } from "./playlistwidget";
 import { PlaylistItemWidget } from "./playlistitemwidget";
@@ -22,9 +21,8 @@ export class MainPlayer extends Widget
     private bottomBar : BottomBar;
     private songMenu : ContextMenu;
     private playlistMenu : ContextMenu;
-    private removeFromPlaylistItem : ContextMenuItem;
     private renameDialog : RenameDialog;
-    private playlistDialog : PlaylistDialog;
+    //private playlistDialog : PlaylistDialog;
     private spectrum : Spectrum;
 
     private currentlyPlaying : PlaylistItemWidget;
@@ -40,9 +38,9 @@ export class MainPlayer extends Widget
     {
         super(container);
 
-        this.filter = new Filter(createElement("div", "filter-container"));
         this.playlistWidget = new PlaylistWidget(createElement("div", "songList"));
         this.bottomBar = new BottomBar(createElement("div", "bottomPanel"));
+        this.filter = new Filter(createElement("div", "filter-container"));
         this.player = new Player(this.bottomBar.wavebar);
         this.spectrum = new Spectrum();
 
@@ -57,19 +55,27 @@ export class MainPlayer extends Widget
             this.renameDialog.hide();
         }).bind(this));
 
+        // construct main context menu //
+
+        let playlistLoadedCondition = () => this.playlistWidget.playlist.loaded;
+        let itemSelectedCondition = () => this.playlistWidget.currentSelection.length > 0;
+        let songSelectedCondition = () => itemSelectedCondition() && this.playlistWidget.currentSelectionItems.every(item => item instanceof Song);
+
         this.songMenu = new ContextMenu();
-        this.songMenu.addItem(new ContextMenuItem("Rename...", this.promptRename.bind(this)));
-        this.songMenu.addItem(new ContextMenuItem("Edit rules...", this.editRules.bind(this)));
-        this.songMenu.addItem(new ContextMenuItem("Reveal in explorer", this.revealInExplorer.bind(this)));
-        this.songMenu.addItem(new ContextMenuItem("Skip once", this.skipSongOnce.bind(this)));
+        this.songMenu.addItem(new ContextMenuItem("Add new item...", this.addNewItem.bind(this), playlistLoadedCondition));
+        this.songMenu.addItem(new ContextMenuItem("Rename...", this.promptRename.bind(this), songSelectedCondition));
+        //this.songMenu.addItem(new ContextMenuItem("Edit rules...", this.editRules.bind(this)));
+        this.songMenu.addItem(new ContextMenuItem("Reveal in explorer", this.revealInExplorer.bind(this), songSelectedCondition));
+        this.songMenu.addItem(new ContextMenuItem("Skip once", this.skipSongOnce.bind(this), itemSelectedCondition));
 
         this.playlistMenu = new ContextMenu();
-        let playListItem = new ContextMenuItem("Add to playlist");
+        let playListItem = new ContextMenuItem("Add to playlist", undefined, itemSelectedCondition);
         playListItem.subMenu = this.playlistMenu;
         this.songMenu.addItem(playListItem);
+        
+        this.songMenu.addItem(new ContextMenuItem("Remove from playlist", this.removeFromPlaylist.bind(this), itemSelectedCondition));
 
-        this.removeFromPlaylistItem = new ContextMenuItem("Remove from playlist", this.removeFromPlaylist.bind(this));
-        this.songMenu.addItem(this.removeFromPlaylistItem);
+        // init ui //
 
         this.backgroundPicture = createElement("div", "albumArt");
         this.backgroundOverlay = createElement("div", "albumOverlay");
@@ -88,8 +94,7 @@ export class MainPlayer extends Widget
             this.playlistMenu,
             this.spectrum,
             this.loadingElement,
-            this.renameDialog,
-            this.playlistDialog
+            this.renameDialog
         );
 
         this.playlistWidget.container.setAttribute("tabIndex", "0");
@@ -124,23 +129,13 @@ export class MainPlayer extends Widget
             hideElement(this.loadingElement);
         });
 
-        this.playlistWidget.on("dblclick", (song : SongWidget, e : MouseEvent) =>
+        this.playlistWidget.on("dblclickitem", (item : PlaylistItemWidget, e : MouseEvent) =>
         {
-            this.playSong(song, true);
+            this.playItem(item, true);
         });
 
-        this.playlistWidget.on("click", (song : SongWidget, e : MouseEvent) =>
+        this.playlistWidget.on("rightclick", (e : MouseEvent) =>
         {
-            // selection handled in songs.ts
-        });
-
-        this.playlistWidget.on("rightclick", (song : SongWidget, e : MouseEvent) =>
-        {
-            if (this.playlistWidget.currentSelection.length <= 1 || !array_contains(this.playlistWidget.currentSelection, song))
-            {
-                this.playlistWidget.select(song, true);
-            }
-
             this.songMenu.show(e.clientX + 1, e.clientY + 1);
         });
 
@@ -216,7 +211,7 @@ export class MainPlayer extends Widget
                 return this.playSelected();
             }
 
-            let success = this.playSong(this.currentlyPlaying);
+            let success = this.playItem(this.currentlyPlaying);
             return success;
         };
 
@@ -263,6 +258,11 @@ export class MainPlayer extends Widget
         this.playlistWidget.container.style.width = "100%";
     }*/
 
+    private addNewItem() : void
+    {
+
+    }
+
     private promptRename() : void
     {
         // console.log("hey- o!!!");
@@ -282,7 +282,7 @@ export class MainPlayer extends Widget
     {
         if (this.playlistWidget.currentSelection.length > 0)
         {
-            revealInExplorer(this.playlistWidget.currentSelection[0].song.filename);
+            revealInExplorer(this.playlistWidget.currentSelection[0].item.getFilename());
         }
     }
 
@@ -319,42 +319,42 @@ export class MainPlayer extends Widget
     {
         if (this.playlistWidget.currentSelection.length === 0)
         {
-            return this.playSong(this.playlistWidget.renderedSongs[0]);
+            return this.playItem(this.playlistWidget.renderedSongs[0]);
         }
         else if (this.playlistWidget.currentSelection.length === 1)
         {
-            return this.playSong(this.playlistWidget.currentSelection[0]);
+            return this.playItem(this.playlistWidget.currentSelection[0]);
         }
         else if (this.playlistWidget.currentSelection.length > 1)
         {
-            let fids = this.playlistWidget.currentSelection.map(itemWidget => "fid:" + i.fid);
-            let filterString = fids.join("|");
+            let ids = this.playlistWidget.currentSelection.map(itemWidget => "id:" + itemWidget.item.id);
+            let filterString = ids.join("|");
             this.filter.removeAllFilters();
             this.filter.addFilter(filterString);
-            return this.playSong(this.playlistWidget.firstItem);
+            return this.playItem(this.playlistWidget.firstItem);
         }
     }
 
-    private playSong(song : SongWidget, restart : boolean = false) : boolean
+    private playItem(itemWidget : PlaylistItemWidget, restart : boolean = false) : boolean
     {
-        if (!song)
+        if (!itemWidget)
         {
             return false;
         }
 
-        if (array_remove_all(this.skipOnceSongs, song).existed)
+        if (array_remove_all(this.skipOnceSongs, itemWidget).existed)
         {
-            song.container.classList.remove("skipping");
-            return this.playSong(this.playlistWidget.songAfter(song));
+            itemWidget.container.classList.remove("skipping");
+            return this.playItem(this.playlistWidget.itemAfter(itemWidget));
         }
 
-        let success = this.player.play(song.song.filename, restart);
+        let success = this.player.play(itemWidget.item.getFilename(), restart);
 
         if (success)
         {
             if (this.currentlyPlaying)
             {
-                if (this.currentlyPlaying === song)
+                if (this.currentlyPlaying === itemWidget)
                 {
                     return true;
                 }
@@ -362,15 +362,15 @@ export class MainPlayer extends Widget
                 this.currentlyPlaying.container.classList.remove("playing");
             }
 
-            this.currentlyPlaying = song;
+            this.currentlyPlaying = itemWidget;
             this.currentlyPlaying.container.classList.add("playing");
 
-            this.bottomBar.primaryString = song.song.metadata.title;
-            this.bottomBar.secondaryString = song.song.metadata.artist + " — " + song.song.metadata.album;
+            this.bottomBar.primaryString = itemWidget.item.metadata.title;
+            this.bottomBar.secondaryString = itemWidget.item.metadata.artist + " — " + itemWidget.item.metadata.album;
 
             // scroll
 
-            this.backgroundSrc = "url(" + JSON.stringify(song.song.metadata.picture) + ")";
+            this.backgroundSrc = "url(" + JSON.stringify(itemWidget.item.metadata.picture) + ")";
         }
 
         return success;
@@ -385,14 +385,14 @@ export class MainPlayer extends Widget
 
     private playNext() : boolean
     {
-        return this.playSong(this.playlistWidget.songAfter(this.currentlyPlaying));
+        return this.playItem(this.playlistWidget.itemAfter(this.currentlyPlaying));
     }
 
     private playPrevious() : void
     {
         if (this.player.currentTimeMs < 2000)
         {
-            this.playSong(this.playlistWidget.songBefore(this.currentlyPlaying));
+            this.playItem(this.playlistWidget.itemBefore(this.currentlyPlaying));
         }
         else
         {
