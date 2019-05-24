@@ -1,20 +1,20 @@
 import { Widget } from "./widget";
-import { SongWidget } from "./songwidget";
+import { PlaylistItemWidget } from "./playlistitemwidget";
 import { Dialog } from "./dialog";
 const edialog = require("electron").remote.dialog;
 import * as fs from "fs";
 import * as npath from "path";
-import { Songs, Playlist } from "./songs";
+import { Playlist } from "./playlist";
 import * as archiver from "archiver";
 import { array_remove, array_last, revealInExplorer, isFileNotFoundError, array_contains, array_item_at, array_insert, SortFunction } from "./util";
-import { Song } from "./song";
+import { PlaylistItem } from "./playlistitem";
 
-export class SongsWidget extends Widget
+export class PlaylistWidget extends Widget
 {
-    private _songs : Songs;
-    private songWidgets : Map<Song, SongWidget> = new Map<Song, SongWidget>();
-    public currentSelection : SongWidget[] = [];
-    private _renderedSongs : SongWidget[] = [];
+    public playlist : Playlist;
+    private playlistItemWidgets : Map<PlaylistItem, PlaylistItemWidget> = new Map<PlaylistItem, PlaylistItemWidget>();
+    public currentSelection : PlaylistItemWidget[] = [];
+    private _renderedItems : PlaylistItemWidget[] = [];
     private constructed : boolean = false;
 
     private dragging : boolean = false;
@@ -26,24 +26,16 @@ export class SongsWidget extends Widget
     {
         super(container || "songList");
 
+        this.createEvent("loadstart");
         this.createEvent("construct");
         this.createEvent("click");
         this.createEvent("dblclick");
         this.createEvent("rightclick");
 
-        this._songs = new Songs();
-        this.songs.on("load", this.construct.bind(this));
-        this.songs.on("change", this.render.bind(this));
-        this.songs.on("add", (song : Song) =>
-        {
-            let songWidget = this.constructSongWidget(song);
-            this.songWidgets.set(song, songWidget);
-        });
-        this.songs.on("remove", (song : Song) =>
-        {
-            array_remove(this.currentSelection, this.songWidgets.get(song));
-            this.songWidgets.delete(song);
-        });
+        this.playlist = new Playlist();
+        this.playlist.on("load", this.construct.bind(this));
+        this.playlist.on("change", this.render.bind(this));
+        this.playlist.on("loadstart", () => this.emitEvent("loadstart"));
 
         this.container.addEventListener("mousemove", this.mousemoveFn.bind(this));
         this.container.addEventListener("mouseup", this.mouseupFn.bind(this));
@@ -53,68 +45,47 @@ export class SongsWidget extends Widget
         document.body.appendChild(this.zipOverlay.container);
     }
 
-    public isPlaylist(playlist : Playlist) : boolean
+    public itemAfter(playlistItemWidget : PlaylistItemWidget) : PlaylistItemWidget
     {
-        return this.songs && this.songs.isPlaylist(playlist);
+        return this.playlistItemWidgets.get(this.playlist.itemAfter(playlistItemWidget.item));
     }
 
-    public loadFromPlaylist(playlist : Playlist)
+    public itemBefore(playlistItemWidget : PlaylistItemWidget) : PlaylistItemWidget
     {
-        this.constructed = false;
-        this.songs.loadFromPlaylist(playlist);
+        return this.playlistItemWidgets.get(this.playlist.itemBefore(playlistItemWidget.item));
     }
 
-    public set songs(songs : Songs)
+    public get firstItem() : PlaylistItemWidget
     {
-        this._songs = songs;
+        return this.playlistItemWidgets.get(this.playlist.filteredItems[0]);
     }
 
-    public get songs() : Songs
+    public get currentSelectionItems() : PlaylistItem[]
     {
-        return this._songs;
+        return this.currentSelection.map(itemWidget => itemWidget.item);
     }
 
-    public songAfter(songWidget : SongWidget) : SongWidget
+    private constructItemWidget(item : PlaylistItem) : PlaylistItemWidget
     {
-        return this.songWidgets.get(this.songs.songAfter(songWidget.song));
-    }
-
-    public songBefore(songWidget : SongWidget) : SongWidget
-    {
-        return this.songWidgets.get(this.songs.songBefore(songWidget.song));
-    }
-
-    public get firstSong() : SongWidget
-    {
-        return this.songWidgets.get(this.songs.filteredSongs[0]);
-    }
-
-    public get currentSelectionSongs() : Song[]
-    {
-        return this.currentSelection.map(songWidget => songWidget.song);
-    }
-
-    private constructSongWidget(song : Song) : SongWidget
-    {
-        let songWidget = new SongWidget(song);
-        songWidget.on("click", (song : SongWidget, e : MouseEvent) => this.songClickFn(song, e));
-        songWidget.on("mousedown", (song : SongWidget, e : MouseEvent) => this.songMousedownFn(song, e));
-        songWidget.on("dblclick", (song : SongWidget, e : MouseEvent) => this.emitEvent("dblclick", song, e));
-        songWidget.on("rightclick", (song : SongWidget, e : MouseEvent) => this.emitEvent("rightclick", song, e));
-        return songWidget;
+        let itemWidget = new PlaylistItemWidget(item);
+        itemWidget.on("click", (itemWidget : PlaylistItemWidget, e : MouseEvent) => this.itemClickFn(itemWidget, e));
+        itemWidget.on("mousedown", (itemWidget : PlaylistItemWidget, e : MouseEvent) => this.itemMousedownFn(itemWidget, e));
+        itemWidget.on("dblclick", (itemWidget : PlaylistItemWidget, e : MouseEvent) => this.emitEvent("dblclick", itemWidget, e));
+        itemWidget.on("rightclick", (itemWidget : PlaylistItemWidget, e : MouseEvent) => this.emitEvent("rightclick", itemWidget, e));
+        return itemWidget;
     }
 
     private construct()
     {
-        this.songWidgets.clear();
+        this.playlistItemWidgets.clear();
 
         let frag = document.createDocumentFragment();
 
-        this.songs.songs.forEach(song =>
+        this.playlist.items.forEach(item =>
         {
-            let songWidget = this.constructSongWidget(song);
-            this.songWidgets.set(song, songWidget);
-            frag.appendChild(songWidget.container);
+            let itemWidget = this.constructItemWidget(item);
+            this.playlistItemWidgets.set(item, itemWidget);
+            frag.appendChild(itemWidget.container);
         });
 
         this.appendChild(frag);
@@ -130,24 +101,24 @@ export class SongsWidget extends Widget
             return;
         }
 
-        this._renderedSongs = this.songs.getRenderList().map(song => this.songWidgets.get(song));
-        console.log("rendering: " + this._renderedSongs.length + " songs");
+        this._renderedItems = this.playlist.getRenderList().map(item => this.playlistItemWidgets.get(item));
+        console.log("rendering: " + this._renderedItems.length + " items");
 
         this.container.innerHTML = "";
         
-        this._renderedSongs.forEach((song, i) =>
+        this._renderedItems.forEach((itemWidget, i) =>
         {
             if ((i & 1) === 0)
             {
-                song.container.classList.add("even");
+                itemWidget.container.classList.add("even");
             }
             else
             {
-                song.container.classList.remove("even");
+                itemWidget.container.classList.remove("even");
             }
         });
 
-        this.appendChild(...this._renderedSongs);
+        this.appendChild(...this._renderedItems);
     }
 
     public exportZip()
@@ -199,7 +170,7 @@ export class SongsWidget extends Widget
 
         archive.pipe(output);
 
-        let filenames = this.songs.filenames;
+        let filenames = this.playlist.filenames;
         
         filenames.forEach((filename, i) =>
         {
@@ -211,34 +182,34 @@ export class SongsWidget extends Widget
         archive.finalize();
     }
 
-    public get sortFn() : SortFunction<SongWidget>
+    public get sortFn() : SortFunction<PlaylistItemWidget>
     {
-        return (left : SongWidget, right : SongWidget) =>
+        return (left : PlaylistItemWidget, right : PlaylistItemWidget) =>
         {
-            return this.songs.sortFn(left.song, right.song);
+            return this.playlist.sortFn(left.item, right.item);
         };
     }
 
-    public select(song : SongWidget, removeOthers : boolean = false) : void
+    public select(itemWidget : PlaylistItemWidget, removeOthers : boolean = false) : void
     {
         if (this.currentSelection.length > 0)
         {
             if (removeOthers)
             {
                 this.deselectAll();
-                this.select(song);
+                this.select(itemWidget);
                 return;
             }
-            else if (this.currentSelection.indexOf(song) === -1)
+            else if (this.currentSelection.indexOf(itemWidget) === -1)
             {
-                array_insert(this.currentSelection, song, this.sortFn);
-                this.doSelectThings(song);
+                array_insert(this.currentSelection, itemWidget, this.sortFn);
+                this.doSelectThings(itemWidget);
             }
         }
         else
         {
-            this.currentSelection = [ song ];
-            this.doSelectThings(song);
+            this.currentSelection = [ itemWidget ];
+            this.doSelectThings(itemWidget);
         }
     }
 
@@ -248,9 +219,9 @@ export class SongsWidget extends Widget
 
         while (this.currentSelection.length > 0)
         {
-            let song = this.currentSelection[0];
-            this.deselect(song, true);
-            newIndexes.push(this.renderedSongs.indexOf(song) + amount);
+            let itemWidget = this.currentSelection[0];
+            this.deselect(itemWidget, true);
+            newIndexes.push(this.renderedSongs.indexOf(itemWidget) + amount);
         }
 
         newIndexes.forEach(newIndex =>
@@ -259,73 +230,73 @@ export class SongsWidget extends Widget
         });
     }
 
-    public selectRange(song1 : SongWidget, song2: SongWidget, removeOthers : boolean = false) : void
+    public selectRange(item1 : PlaylistItemWidget, item2: PlaylistItemWidget, removeOthers : boolean = false) : void
     {
         if (removeOthers)
         {
             this.deselectAll();
         }
 
-        let sort = this.songs.sortFn(song1.song, song2.song);
-        let firstSong : SongWidget, lastSong : SongWidget;
+        let sort = this.playlist.sortFn(item1.item, item2.item);
+        let firstSong : PlaylistItemWidget, lastSong : PlaylistItemWidget;
 
         if (sort)
         {
-            firstSong = song1;
-            lastSong = song2;
+            firstSong = item1;
+            lastSong = item2;
         }
         else
         {
-            firstSong = song2;
-            lastSong = song1;
+            firstSong = item2;
+            lastSong = item1;
         }
 
         let firstIndex = this.renderedSongs.indexOf(firstSong);
         let lastIndex = this.renderedSongs.indexOf(lastSong);
 
         let toAdd = this.renderedSongs.slice(firstIndex, lastIndex + 1);
-        toAdd = toAdd.filter(song => this.currentSelection.indexOf(song) === -1);
-        toAdd.forEach(song =>
+        toAdd = toAdd.filter(item => this.currentSelection.indexOf(item) === -1);
+        toAdd.forEach(item =>
         {
-            this.doSelectThings(song);
+            this.doSelectThings(item);
         });
 
         this.currentSelection.push(...toAdd);
     }
 
     // called by selection functions //
-    private doSelectThings(song : SongWidget)
+    private doSelectThings(itemWidget : PlaylistItemWidget)
     {
-        song.container.classList.add("selected");
+        itemWidget.container.classList.add("selected");
     }
 
-    public selectTo(song : SongWidget) : void
+    public selectTo(itemWidget : PlaylistItemWidget) : void
     {
         if (this.currentSelection.length === 0)
         {
-            this.select(song);
+            this.select(itemWidget);
         }
         else if (this.currentSelection.length === 1)
         {
-            this.selectRange(song, this.currentSelection[0]);
+            this.selectRange(itemWidget, this.currentSelection[0]);
         }
         else
         {
             let firstIndex = this.renderedSongs.indexOf(this.currentSelection[0]);
             let lastIndex = this.renderedSongs.indexOf(this.currentSelection[this.currentSelection.length - 1]);
-            let songIndex = this.renderedSongs.indexOf(song);
+            let itemWidgetIndex = this.renderedSongs.indexOf(itemWidget);
             
-            if (songIndex >= firstIndex && songIndex <= lastIndex)
+            if (itemWidgetIndex >= firstIndex && itemWidgetIndex <= lastIndex)
             {
                 return;
             }
-            else if (songIndex < firstIndex)
+            else if (itemWidgetIndex < firstIndex)
             {
-                this.selectRange(song, this.renderedSongs[lastIndex]);
+                this.selectRange(itemWidget, this.renderedSongs[lastIndex]);
             }
             else
             {
-                this.selectRange(song, this.renderedSongs[firstIndex]);
+                this.selectRange(itemWidget, this.renderedSongs[firstIndex]);
             }
         }
     }
@@ -335,32 +306,32 @@ export class SongsWidget extends Widget
         this.selectRange(this.renderedSongs[0], array_last(this.renderedSongs));
     }
 
-    public deselect(song : SongWidget, remove : boolean = true) : void
+    public deselect(itemWidget : PlaylistItemWidget, remove : boolean = true) : void
     {
-        song.container.classList.remove("selected");
+        itemWidget.container.classList.remove("selected");
         if (remove)
         {
-            array_remove(this.currentSelection, song);
+            array_remove(this.currentSelection, itemWidget);
         }
     }
 
     public deselectAll() : void
     {
-        this.currentSelection.forEach(song =>
+        this.currentSelection.forEach(itemWidget =>
         {
-            song.container.classList.remove("selected");
+            itemWidget.container.classList.remove("selected");
         });
 
         this.currentSelection = [];
     }
 
-    public get renderedSongs() : SongWidget[]
+    public get renderedSongs() : PlaylistItemWidget[]
     {
-        return this._renderedSongs;
+        return this._renderedItems;
     }
 
-    // only to be called by song container's onclick //
-    private songClickFn(song : SongWidget, e : MouseEvent) : void
+    // only to be called by item container's onclick //
+    private itemClickFn(item : PlaylistItemWidget, e : MouseEvent) : void
     {
         e.stopPropagation();
 
@@ -370,17 +341,17 @@ export class SongsWidget extends Widget
             {
                 let sorted = this.renderedSongs;
 
-                let getDist = (song1 : SongWidget, song2 : SongWidget) =>
+                let getDist = (item1 : PlaylistItemWidget, item2 : PlaylistItemWidget) =>
                 {
-                    return Math.abs(sorted.indexOf(song1) - sorted.indexOf(song2));
+                    return Math.abs(sorted.indexOf(item1) - sorted.indexOf(item2));
                 }
 
-                let closest : SongWidget = this.currentSelection[0];
-                let closestDist = getDist(song, closest);
+                let closest : PlaylistItemWidget = this.currentSelection[0];
+                let closestDist = getDist(item, closest);
                 
                 this.currentSelection.forEach(sSong =>
                 {
-                    let dist = getDist(sSong, song);
+                    let dist = getDist(sSong, item);
                     if (dist < closestDist)
                     {
                         closest = sSong;
@@ -388,35 +359,35 @@ export class SongsWidget extends Widget
                     }
                 });
 
-                this.selectRange(song, closest, false);
+                this.selectRange(item, closest, false);
             }
             else
             {
-                this.selectTo(song);
+                this.selectTo(item);
             }
         }
         else if (e.ctrlKey)
         {
-            if (array_contains(this.currentSelection, song))
+            if (array_contains(this.currentSelection, item))
             {
-                this.deselect(song, true);
+                this.deselect(item, true);
             }
             else
             {
-                this.select(song, false);
+                this.select(item, false);
             }
         }
         else
         {
-            this.select(song, true);
+            this.select(item, true);
         }
 
-        this.emitEvent("click", song, e);
+        this.emitEvent("click", item, e);
     }
 
-    private songMousedownFn(song : SongWidget, e : MouseEvent) : void
+    private itemMousedownFn(itemWidget : PlaylistItemWidget, e : MouseEvent) : void
     {
-        if (array_contains(this.currentSelection, song) && this.songs.type === "songList")
+        if (array_contains(this.currentSelection, itemWidget))
         {
             this.dragging = true;
             this.dragOrigin = { x: e.clientX, y: e.clientY };
@@ -429,15 +400,15 @@ export class SongsWidget extends Widget
         {
             let dx = e.clientX - this.dragOrigin.x;
             let dy = e.clientY - this.dragOrigin.y;
-            let h = this.songWidgets.get(this.songs.songs[0]).container.getBoundingClientRect().height;
+            let h = this.playlistItemWidgets.get(this.playlist.items[0]).container.getBoundingClientRect().height;
 
             if (dy >= h)
             {
                 if (array_last(this.currentSelection).container.nextElementSibling)
                 {
-                    this.currentSelection.forEach(song =>
+                    this.currentSelection.forEach(itemWidget =>
                     {
-                        this.songs.moveSong(song.song, ~~(dy / h));
+                        this.playlist.moveItem(itemWidget.item, ~~(dy / h));
                     });
 
                     dy %= h;
@@ -448,9 +419,9 @@ export class SongsWidget extends Widget
             {
                 if (this.currentSelection[0].container.previousElementSibling)
                 {
-                    this.currentSelection.forEach(song =>
+                    this.currentSelection.forEach(itemWidget =>
                     {
-                        this.songs.moveSong(song.song, Math.ceil(dy / h));
+                        this.playlist.moveItem(itemWidget.item, Math.ceil(dy / h));
                     });
 
                     dy = -((-dy) % h);

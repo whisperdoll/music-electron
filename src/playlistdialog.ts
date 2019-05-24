@@ -1,6 +1,6 @@
 import { Dialog } from "./dialog";
 import { InputDialog } from "./inputdialog";
-import { Playlist, PlaylistType } from "./songs";
+import { Playlist, PlaylistType } from "./playlist";
 import { createElement, createOptionElement, showElement, hideElement } from "./util";
 
 export class PlaylistDialog extends InputDialog<Playlist>
