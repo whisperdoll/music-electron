@@ -1,4 +1,4 @@
-import { fileExists, createElement, getUserDataPath, emptyFn } from "./util";
+import { fileExists, createElement, getUserDataPath, emptyFn, bigintStatSync } from "./util";
 import { Widget } from "./widget";
 import * as mm from "music-metadata";
 import * as electron from "electron";
@@ -7,6 +7,7 @@ import * as path from "path";
 import { SafeWriter } from "./safewriter";
 import { EventClass } from "./eventclass";
 import { Metadata, PlaylistItem } from "./playlistitem";
+import { Playlist } from "./playlist";
 
 export class Song extends PlaylistItem
 {
@@ -15,14 +16,14 @@ export class Song extends PlaylistItem
 
     public stats : fs.Stats;
 
-    constructor(filename : string, stats : fs.Stats, metadata? : Metadata)
+    constructor(filename : string)
     {
         super();
 
-        this.metadata = metadata;
         this.tags = [];
-        this.stats = stats;
+        this.stats =  bigintStatSync(filename);
         this._filename = path.normalize(filename);
+        this.metadata = Playlist.metadata[this.fid];
     }
 
     public get fid() : string
@@ -198,6 +199,8 @@ export class Song extends PlaylistItem
                         }
 
                         this.metadata.picture = src;
+                        Playlist.metadata[this.fid] = this.metadata;
+                        Playlist.writeCache();
                         callback && callback();
                     });
                 }
@@ -205,6 +208,8 @@ export class Song extends PlaylistItem
             else
             {
                 this.metadata.picture = "";
+                Playlist.metadata[this.fid] = this.metadata;
+                Playlist.writeCache();
                 callback && callback();
             }
         });

@@ -8,9 +8,11 @@ import { Playlist } from "./playlist";
 import * as archiver from "archiver";
 import { array_remove, array_last, revealInExplorer, isFileNotFoundError, array_contains, array_item_at, array_insert, SortFunction } from "./util";
 import { PlaylistItem } from "./playlistitem";
+import { PlaylistData } from "./playlistdata";
 
 export class PlaylistWidget extends Widget
 {
+    private itemWidgetPool : PlaylistItemWidget[] = [];
     public playlist : Playlist;
     private playlistItemWidgets : Map<PlaylistItem, PlaylistItemWidget> = new Map<PlaylistItem, PlaylistItemWidget>();
     public currentSelection : PlaylistItemWidget[] = [];
@@ -30,11 +32,13 @@ export class PlaylistWidget extends Widget
         this.createEvent("construct");
         this.createEvent("dblclickitem");
         this.createEvent("rightclick");
+        this.createEvent("reset");
 
         this.playlist = new Playlist();
         this.playlist.on("load", this.construct.bind(this));
         this.playlist.on("change", this.render.bind(this));
         this.playlist.on("loadstart", () => this.emitEvent("loadstart"));
+        this.playlist.on("reset", () => this.emitEvent("reset"));
 
         this.container.addEventListener("mousemove", this.mousemoveFn.bind(this));
         this.container.addEventListener("mouseup", this.mouseupFn.bind(this));
@@ -43,6 +47,21 @@ export class PlaylistWidget extends Widget
         this.zipOverlay = new Dialog(false);
         this.zipOverlay.appendHTML("Please wait,,,");
         document.body.appendChild(this.zipOverlay.container);
+    }
+
+    public get playlistData() : PlaylistData
+    {
+        return this.playlist.playlistData;
+    }
+
+    public reload() : void
+    {
+        this.playlist.reload();
+    }
+
+    public loadPlaylist(playlistData : PlaylistData) : void
+    {
+        this.playlist.loadPlaylist(playlistData);
     }
 
     public itemAfter(playlistItemWidget : PlaylistItemWidget) : PlaylistItemWidget
@@ -67,14 +86,30 @@ export class PlaylistWidget extends Widget
 
     private constructItemWidget(item : PlaylistItem) : PlaylistItemWidget
     {
-        let itemWidget = new PlaylistItemWidget(item);
-        itemWidget.on("mousedown", (itemWidget : PlaylistItemWidget, e : MouseEvent) => this.itemMousedownFn(itemWidget, e));
-        itemWidget.on("dblclick", (itemWidget : PlaylistItemWidget, e : MouseEvent) => this.emitEvent("dblclick", itemWidget, e));
-        return itemWidget;
+        if (this.itemWidgetPool.length > 0)
+        {
+            let itemWidget = this.itemWidgetPool.splice(0, 1)[0];
+            itemWidget.setNewItem(item);
+            return itemWidget;
+        }
+        else
+        {
+            let itemWidget = new PlaylistItemWidget(item);
+            itemWidget.on("mousedown", (itemWidget : PlaylistItemWidget, e : MouseEvent) => this.itemMousedownFn(itemWidget, e));
+            itemWidget.on("dblclick", (itemWidget : PlaylistItemWidget, e : MouseEvent) => this.emitEvent("dblclickitem", itemWidget, e));
+            return itemWidget;
+        }
     }
 
     private construct()
     {
+        console.time("constructing playlist");
+        
+        this.playlistItemWidgets.forEach((itemWidget) =>
+        {
+            this.itemWidgetPool.push(itemWidget);
+        });
+
         this.playlistItemWidgets.clear();
 
         let frag = document.createDocumentFragment();
@@ -89,6 +124,7 @@ export class PlaylistWidget extends Widget
         this.appendChild(frag);
         this.constructed = true;
         this.emitEvent("construct");
+        console.timeEnd("constructing playlist");
         this.render();
     }
 
@@ -100,7 +136,7 @@ export class PlaylistWidget extends Widget
         }
 
         this._renderedItems = this.playlist.getRenderList().map(item => this.playlistItemWidgets.get(item));
-        console.log("rendering: " + this._renderedItems.length + " items");
+        console.time("rendering " + this._renderedItems.length + " items");
 
         this.container.innerHTML = "";
         
@@ -117,6 +153,7 @@ export class PlaylistWidget extends Widget
         });
 
         this.appendChild(...this._renderedItems);
+        console.timeEnd("rendering " + this._renderedItems.length + " items");
     }
 
     public exportZip()

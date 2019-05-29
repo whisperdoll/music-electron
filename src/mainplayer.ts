@@ -12,6 +12,9 @@ import { Spectrum } from "./spectrum";
 import { InputDialog } from "./inputdialog";
 import { PlaylistWidget } from "./playlistwidget";
 import { PlaylistItemWidget } from "./playlistitemwidget";
+import { Sidebar } from "./sidebar";
+import { PlaylistData } from "./playlistdata";
+import { AddItemDialog } from "./additemdialog";
 
 export class MainPlayer extends Widget
 {
@@ -19,9 +22,11 @@ export class MainPlayer extends Widget
     private playlistWidget : PlaylistWidget;
     private player : Player;
     private bottomBar : BottomBar;
+    private sidebar : Sidebar;
     private songMenu : ContextMenu;
     private playlistMenu : ContextMenu;
     private renameDialog : RenameDialog;
+    private addItemDialog : AddItemDialog;
     //private playlistDialog : PlaylistDialog;
     private spectrum : Spectrum;
 
@@ -43,6 +48,7 @@ export class MainPlayer extends Widget
         this.filter = new Filter(createElement("div", "filter-container"));
         this.player = new Player(this.bottomBar.wavebar);
         this.spectrum = new Spectrum();
+        this.sidebar = new Sidebar(createElement("div", "sidebar"));
 
         this.renameDialog = new RenameDialog(((err : NodeJS.ErrnoException) =>
         {
@@ -54,6 +60,8 @@ export class MainPlayer extends Widget
 
             this.renameDialog.hide();
         }).bind(this));
+
+        this.addItemDialog = new AddItemDialog(this.playlistWidget);
 
         // construct main context menu //
 
@@ -90,11 +98,13 @@ export class MainPlayer extends Widget
             this.filter,
             this.playlistWidget,
             this.bottomBar,
+            this.sidebar,
             this.songMenu,
             this.playlistMenu,
             this.spectrum,
             this.loadingElement,
-            this.renameDialog
+            this.renameDialog,
+            this.addItemDialog
         );
 
         this.playlistWidget.container.setAttribute("tabIndex", "0");
@@ -122,6 +132,11 @@ export class MainPlayer extends Widget
         this.playlistWidget.on("loadstart", () =>
         {
             showElement(this.loadingElement);
+        });
+
+        this.playlistWidget.on("reset", () =>
+        {
+            this.player.stop();
         });
 
         this.playlistWidget.on("construct", () =>
@@ -244,6 +259,11 @@ export class MainPlayer extends Widget
         {
             this.playlistWidget.playlist.unshuffle();
         });
+
+        this.sidebar.on("playlistselect", (playlistData : PlaylistData) =>
+        {
+            this.playlistWidget.loadPlaylist(playlistData);
+        });
     }
 
     /*private showPlaylists() : void
@@ -260,7 +280,7 @@ export class MainPlayer extends Widget
 
     private addNewItem() : void
     {
-
+        this.addItemDialog.show();
     }
 
     private promptRename() : void

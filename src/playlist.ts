@@ -1,4 +1,4 @@
-import { endsWith, mergeSorted, array_copy, array_shuffle, SortFunction, array_swap, getUserDataPath, array_item_at, bigintStat } from "./util";
+import { endsWith, mergeSorted, array_copy, array_shuffle, SortFunction, array_swap, getUserDataPath, array_item_at, bigintStat, bigintStatSync, emptyFn } from "./util";
 const dir = require("node-dir");
 import * as fs from "fs";
 import * as npath from "path";
@@ -6,12 +6,13 @@ import { SafeWriter } from "./safewriter";
 import { EventClass } from "./eventclass";
 import { Metadata, PlaylistItem } from "./playlistitem";
 import { Song } from "./song";
+import { PlaylistData, SongData, PathData } from "./playlistdata";
 
 export class Playlist extends EventClass
 {
     private static cacheFilename = npath.join(getUserDataPath(), "songs.cache");
     private static cacheFid : string;
-    private static metadata : { [fid:string] : Metadata };
+    public static metadata : { [fid : string] : Metadata };
 
     private noSort = (left : PlaylistItem, right : PlaylistItem) =>
     {
@@ -20,10 +21,10 @@ export class Playlist extends EventClass
     };
     
     public items : PlaylistItem[] = [];
-    public allowedExtensions : string[] =
+    public static allowedExtensions : string[] =
     [
-        ".mp3",
-        ".m4a"
+        "mp3",
+        "m4a"
     ];
 
     private permFilter : string = "";
@@ -33,11 +34,17 @@ export class Playlist extends EventClass
     private shuffledIndeces : number[] = [];
     private shuffled : boolean = false;
     private _defaultSortFn : SortFunction<PlaylistItem> = this.noSort;
+    private loadingAmount : number;
+    private loadedSoFar : number;
+    private _playlistData : PlaylistData;
 
     private _sortFn : SortFunction<PlaylistItem> = this.defaultSortFn;
 
     private _loading : boolean = false;
     private _loaded : boolean = false;
+    private _loadCheck : boolean = false;
+
+    private _resetCallback : Function = null;
 
     constructor()
     {
@@ -46,6 +53,12 @@ export class Playlist extends EventClass
         this.createEvent("loadstart");
         this.createEvent("load");
         this.createEvent("change");
+        this.createEvent("reset");
+
+        this.on("load", () =>
+        {
+            this._resetCallback && this._resetCallback();
+        });
 
         if (!Playlist.metadata)
         {
@@ -63,15 +76,11 @@ export class Playlist extends EventClass
         return this.items.map(item => item.getFilename());
     }
 
-    public reset() : boolean
+    public reset(callback : Function) : boolean
     {
         if (this._loading)
         {
-            this.once("load", () =>
-            {
-                this.reset();
-            });
-
+            this._resetCallback = callback;
             return false;
         }
 
@@ -81,9 +90,105 @@ export class Playlist extends EventClass
         this._filteredItems = [];
         this._loaded = false;
         this._loading = false;
-        this.emitEvent("change");
+        this.emitEvent("reset");
+        callback();
 
         return true;
+    }
+
+    public get playlistData() : PlaylistData
+    {
+        return this._playlistData;
+    }
+
+    public reload() : void
+    {
+        this.playlistData && this.loadPlaylist(this.playlistData);
+    }
+
+    public loadPlaylist(playlistData : PlaylistData) : void
+    {
+        this.reset(() =>
+        {
+            console.time("loading playlist " + playlistData.name);
+            this._loading = true;
+            this._loadCheck = true;
+            this.loadingAmount = 0;
+            this.loadedSoFar = 0;
+            this._playlistData = playlistData;
+            this.emitEvent("loadstart");
+
+            playlistData.items.forEach(item =>
+            {
+                switch (item.type)
+                {
+                    case "song":
+                        this.loadSong(item.data);
+                        break;
+                    case "path":
+                        this.loadPath(item.data);
+                        break;
+                }
+            });
+
+            this._loadCheck = false;
+
+            // check if they were all sync //
+            this.loadedSoFar--;
+            this.progressLoading();
+        });
+    }
+
+    private progressLoading() : void
+    {
+        this.loadedSoFar++;
+        if (this.loadedSoFar === this.loadingAmount && !this._loadCheck)
+        {
+            this._loading = false;
+            this._loaded = true;
+            this.sort(this.sortFn, false);
+            this.filter(this.permFilter, false);
+            this.emitEvent("load");
+            console.timeEnd("loading playlist " + this.playlistData.name);
+        }
+    }
+
+    // need to handle internal sorting of paths //
+
+    private loadSong(data : SongData)
+    {
+        if (this.filenameAllowed(data.filename))
+        {
+            this.loadingAmount++;
+            let s = new Song(data.filename);
+            s.once("load", () =>
+            {
+                if (s.matchesFilter(this.permFilter))
+                {
+                    this.items.push(s);
+                }
+
+                this.progressLoading();
+            });
+            s.load();
+        }
+    }
+
+    private loadPath(data : PathData)
+    {
+        this.permFilter = this.sortFromFilter(data.filter);
+
+        try
+        {
+            console.time("loading path " + data.path);
+            let filenames : string[] = dir.files(data.path, { sync: true });
+            filenames.forEach(filename => this.loadSong({ filename }));
+            console.timeEnd("loading path " + data.path);
+        }
+        catch (err)
+        {
+            throw err;
+        }
     }
 
     private static loadMetadata() : void
@@ -170,7 +275,7 @@ export class Playlist extends EventClass
     private sortFromFilter(filter : string, rerender : boolean = true) : string
     {
         filter = filter.toLowerCase();
-        console.log("sorting from filter: " + filter);
+        //console.log("sorting from filter: " + filter);
         let q = false;
         let pcounter = 0;
         let didASort = 0;
@@ -254,7 +359,7 @@ export class Playlist extends EventClass
 
         if (!didASort && this.sortFn !== this.defaultSortFn)
         {
-            this.sort(this.defaultSortFn, rerender);
+            //this.sort(this.defaultSortFn, rerender);
         }
 
         return filter;
@@ -469,11 +574,11 @@ export class Playlist extends EventClass
 
     private filenameAllowed(filename : string) : boolean
     {
-        let ret = this.allowedExtensions.some(ext => endsWith(filename.toLowerCase(), ext));
+        let ret = Playlist.allowedExtensions.some(ext => endsWith(filename.toLowerCase(), "." + ext));
 
         if (!ret)
         {
-            console.log(filename + " not allowed!!!");
+            //console.log(filename + " not allowed!!!");
         }
 
         return ret;

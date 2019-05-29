@@ -60,6 +60,21 @@ canvas {
   font-weight: bold;
 }
 
+#footer {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  right: 0;
+  height: 36px;
+  line-height: 36px;
+  color: white;
+  padding: 0 8px;
+  background: #555;
+  font-size: 16px;
+  font-family: Helvetica;
+  z-index: 1;
+}
+
 #container, #mainPlayer, .albumArt, .dialog-backdrop, .spectrum > canvas, .albumOverlay {
   height: 100%;
   width: 100%;
@@ -297,7 +312,49 @@ canvas {
   font-style: italic;
   padding-bottom: 0.2em;
 }
-#mainPlayer .playlists {
+#mainPlayer .addItemDialog .row {
+  margin: 8px 0;
+  display: grid;
+  grid-template-columns: 35% 65%;
+  grid-template-rows: 100%;
+}
+#mainPlayer .addItemDialog .buttonRow {
+  margin: 8px 0;
+  text-align: right;
+}
+#mainPlayer .addItemDialog .buttonRow .add {
+  margin-right: 8px;
+}
+#mainPlayer .addItemDialog input, #mainPlayer .addItemDialog select, #mainPlayer .addItemDialog button {
+  border: 1px solid #aaa;
+  border-radius: 0;
+  font-size: 16px;
+}
+#mainPlayer .addItemDialog select, #mainPlayer .addItemDialog button {
+  cursor: pointer;
+}
+#mainPlayer .addItemDialog input:hover, #mainPlayer .addItemDialog select:hover, #mainPlayer .addItemDialog input[type=checkbox]:hover, #mainPlayer .addItemDialog button:hover {
+  border: 1px solid #555;
+}
+#mainPlayer .addItemDialog input[type=checkbox] {
+  cursor: pointer;
+  -webkit-appearance: none;
+  background: white;
+  width: 21px;
+  height: 20px;
+  margin: 0;
+  border: 1px solid #aaa;
+}
+#mainPlayer .addItemDialog input[type=checkbox]:checked:after {
+  content: "⨯";
+  position: relative;
+  top: -5.5px;
+  left: 0.5px;
+  font-size: 23px;
+  font-weight: bold;
+  color: #555;
+}
+#mainPlayer .sidebar {
   position: absolute;
   top: 48px;
   right: 0;
@@ -310,21 +367,21 @@ canvas {
   color: #eee;
   display: inline-block;
 }
-#mainPlayer .playlists .list {
+#mainPlayer .sidebar .list {
   list-style: none;
   padding: 0;
   margin: 0;
 }
-#mainPlayer .playlists .list .listItem {
+#mainPlayer .sidebar .list .listItem {
   padding: 8px 12px;
   background-color: rgba(0, 0, 0, 0);
   cursor: pointer;
   user-select: none;
 }
-#mainPlayer .playlists .list .listItem:hover {
+#mainPlayer .sidebar .list .listItem:hover {
   background-color: rgba(255, 255, 255, 0.1);
 }
-#mainPlayer .playlists .list .listItem.add {
+#mainPlayer .sidebar .list .listItem.add {
   text-align: center;
   font-weight: bold;
 }

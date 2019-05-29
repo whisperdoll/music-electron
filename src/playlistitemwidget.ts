@@ -5,7 +5,7 @@ import { PlaylistItem } from "./playlistitem";
 
 export class PlaylistItemWidget extends Widget
 {
-    public readonly item : PlaylistItem;
+    private _item : PlaylistItem;
 
     private thumbnail : HTMLImageElement;
     private primaryLabel : HTMLElement;
@@ -15,7 +15,7 @@ export class PlaylistItemWidget extends Widget
     constructor(playlistItem : PlaylistItem)
     {
         super("song");
-        this.item = playlistItem;
+        this._item = playlistItem;
 
         this.createEvent("load");
         this.createEvent("dblclick");
@@ -48,6 +48,17 @@ export class PlaylistItemWidget extends Widget
                 this.construct();
             });
         }
+    }
+
+    public get item() : PlaylistItem
+    {
+        return this._item;
+    }
+
+    public setNewItem(item : PlaylistItem)
+    {
+        this._item = item;
+        this.updateContainer();
     }
 
     private construct() : void
