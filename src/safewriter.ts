@@ -9,6 +9,18 @@ export class SafeWriter
 {
     private static queues : { [fid : string] : QueueItem[] } = {};
 
+    public static writeSync(filename : string, data : string | Buffer)
+    {
+        if (typeof(data) === "string")
+        {
+            fs.writeFileSync(filename, data, "utf8");
+        }
+        else
+        {
+            fs.writeFileSync(filename, data);
+        }
+    }
+
     public static write(filename : string, data : string | Buffer, cb? : CallbackFn, fid? : string)
     {
         if (!fileExists(filename))

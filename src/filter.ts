@@ -56,10 +56,19 @@ export class Filter extends Widget
         }
     }
 
-    public removeFilter(index : number, silent : boolean = false) : void
+    public removeFilter(filter : number | HTMLElement, silent : boolean = false) : void
     {
-        this.removeTagElement(this.tagElements[index]);
-        array_remove_at(this.filters, index);
+        if (filter instanceof HTMLElement)
+        {
+            let index = this.tagElements.indexOf(filter);
+            this.removeTagElement(filter);
+            array_remove_at(this.filters, index);
+        }
+        else
+        {
+            this.removeTagElement(this.tagElements[filter]);
+            array_remove_at(this.filters, filter);
+        }
 
         if (!silent)
         {
@@ -110,7 +119,7 @@ export class Filter extends Widget
 
         let r = createElement("div", "remove");
         r.innerText = "✕"
-        t.addEventListener("click", this.removeFilter.bind(this, filterIndex));
+        t.addEventListener("click", () => this.removeFilter(t));
         t.appendChild(r);
         
         this.container.appendChild(t);
@@ -132,14 +141,24 @@ export class Filter extends Widget
 
     private removeTagElement(t : HTMLElement)
     {
-        let currentPaddingStyle = (getComputedStyle(this.input) as any)["padding-left"];
+        let w = t.getBoundingClientRect().width;
+        let index = this.tagElements.indexOf(t);
+
+        let currentPaddingStyle = getComputedStyle(this.input).paddingLeft;
         let currentPadding = parseInt(currentPaddingStyle);
 
-        let marginStyle = (getComputedStyle(t) as any)["margin-right"];
+        let marginStyle = getComputedStyle(t).marginRight;
         let margin = parseInt(marginStyle);
 
-        currentPadding -= t.getBoundingClientRect().width + margin;
-        (this.input.style as any)["padding-left"] = currentPadding + "px";
+        currentPadding -= w + margin;
+        this.input.style.paddingLeft = currentPadding + "px";
+
+        for (let i = index + 1; i < this.tagElements.length; i++)
+        {
+            let left = parseInt(this.tagElements[i].style.left);
+            left -= w + margin;
+            this.tagElements[i].style.left = left.toString() + "px";
+        }
 
         array_remove(this.tagElements, t);
         this.container.removeChild(t);

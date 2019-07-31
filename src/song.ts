@@ -57,7 +57,7 @@ export class Song extends PlaylistItem
     }
 
     public renameFile(newFilename : string, callback : (err : NodeJS.ErrnoException) => void) : void
-    {
+    {        
         fs.rename(this.filename, newFilename, (err) =>
         {
             if (!err)
@@ -72,7 +72,6 @@ export class Song extends PlaylistItem
     public renameShallow(newFilename : string)
     {
         this._filename = newFilename;
-        this.emitEvent("change");
     }
 
     public get filename() : string

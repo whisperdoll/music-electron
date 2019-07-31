@@ -14,7 +14,7 @@ import { PlaylistWidget } from "./playlistwidget";
 import { PlaylistItemWidget } from "./playlistitemwidget";
 import { Sidebar } from "./sidebar";
 import { PlaylistData } from "./playlistdata";
-import { AddItemDialog } from "./additemdialog";
+import { StatusBar } from "./statusbar";
 
 export class MainPlayer extends Widget
 {
@@ -22,11 +22,11 @@ export class MainPlayer extends Widget
     private playlistWidget : PlaylistWidget;
     private player : Player;
     private bottomBar : BottomBar;
+    private statusBar : StatusBar;
     private sidebar : Sidebar;
     private songMenu : ContextMenu;
     private playlistMenu : ContextMenu;
     private renameDialog : RenameDialog;
-    private addItemDialog : AddItemDialog;
     //private playlistDialog : PlaylistDialog;
     private spectrum : Spectrum;
 
@@ -45,6 +45,7 @@ export class MainPlayer extends Widget
 
         this.playlistWidget = new PlaylistWidget(createElement("div", "songList"));
         this.bottomBar = new BottomBar(createElement("div", "bottomPanel"));
+        this.statusBar = new StatusBar(this.playlistWidget);
         this.filter = new Filter(createElement("div", "filter-container"));
         this.player = new Player(this.bottomBar.wavebar);
         this.spectrum = new Spectrum();
@@ -61,8 +62,6 @@ export class MainPlayer extends Widget
             this.renameDialog.hide();
         }).bind(this));
 
-        this.addItemDialog = new AddItemDialog(this.playlistWidget);
-
         // construct main context menu //
 
         let playlistLoadedCondition = () => this.playlistWidget.playlist.loaded;
@@ -70,7 +69,6 @@ export class MainPlayer extends Widget
         let songSelectedCondition = () => itemSelectedCondition() && this.playlistWidget.currentSelectionItems.every(item => item instanceof Song);
 
         this.songMenu = new ContextMenu();
-        this.songMenu.addItem(new ContextMenuItem("Add new item...", this.addNewItem.bind(this), playlistLoadedCondition));
         this.songMenu.addItem(new ContextMenuItem("Rename...", this.promptRename.bind(this), songSelectedCondition));
         //this.songMenu.addItem(new ContextMenuItem("Edit rules...", this.editRules.bind(this)));
         this.songMenu.addItem(new ContextMenuItem("Reveal in explorer", this.revealInExplorer.bind(this), songSelectedCondition));
@@ -98,13 +96,13 @@ export class MainPlayer extends Widget
             this.filter,
             this.playlistWidget,
             this.bottomBar,
+            this.statusBar,
             this.sidebar,
             this.songMenu,
             this.playlistMenu,
             this.spectrum,
             this.loadingElement,
-            this.renameDialog,
-            this.addItemDialog
+            this.renameDialog
         );
 
         this.playlistWidget.container.setAttribute("tabIndex", "0");
@@ -136,12 +134,13 @@ export class MainPlayer extends Widget
 
         this.playlistWidget.on("reset", () =>
         {
-            this.player.stop();
+            this.stopSong();
         });
 
         this.playlistWidget.on("construct", () =>
         {
             hideElement(this.loadingElement);
+            this.stopSong();
         });
 
         this.playlistWidget.on("dblclickitem", (item : PlaylistItemWidget, e : MouseEvent) =>
@@ -278,11 +277,6 @@ export class MainPlayer extends Widget
         this.playlistWidget.container.style.width = "100%";
     }*/
 
-    private addNewItem() : void
-    {
-        this.addItemDialog.show();
-    }
-
     private promptRename() : void
     {
         // console.log("hey- o!!!");
@@ -401,6 +395,16 @@ export class MainPlayer extends Widget
         this.player.stop();
         this.backgroundSrc = "";
         this.bottomBar.reset();
+        if (this.currentlyPlaying)
+        {
+            this.currentlyPlaying.container.classList.remove("playing");
+            this.currentlyPlaying = null;
+        }
+        this.skipOnceSongs.forEach(widget =>
+        {
+            widget.container.classList.remove("skipping");
+        });
+        this.skipOnceSongs = [];
     }
 
     private playNext() : boolean

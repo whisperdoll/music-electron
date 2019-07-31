@@ -34,7 +34,7 @@
     "sass": "^1.20.1",
     "tslint": "^5.16.0",
     "typescript": "^3.4.5",
-    "wavesurfer.js": "https://github.com/katspaugh/wavesurfer.js.git"
+    "wavesurfer.js": "https://github.com/songsing/wavesurfer.js.git"
   },
   "dependencies": {
     "@types/node": "^10.14.7"

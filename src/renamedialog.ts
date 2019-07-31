@@ -101,5 +101,7 @@ export class RenameDialog extends Dialog
                 this.onerr(err);
             });
         });
+
+        this.hide();
     }
 }

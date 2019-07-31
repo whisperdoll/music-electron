@@ -24,6 +24,44 @@ export function revealInExplorer(filename : string) : void
     }
 }
 
+export function secsToMinSecs(totalSecs : number) : string
+{
+    let nsecs = Math.floor(totalSecs % 60);
+    let nmins = Math.floor(totalSecs / 60);
+    let secs : string;
+    let mins : string;
+
+    if (isNaN(nsecs))
+    {
+        secs = "--";
+    }
+    else
+    {
+        secs = nsecs.toString();
+    }
+
+    if (isNaN(nmins))
+    {
+        mins = "--";
+    }
+    else
+    {
+        mins = nmins.toString();
+    }
+
+
+    if (secs.length === 1)
+    {
+        secs = "0" + secs;
+    }
+    if (mins.length === 1)
+    {
+        mins = "0" + mins;
+    }
+
+    return mins + ":" + secs;
+}
+
 export function fileExists(filename : string) : boolean
 {
     return fs.existsSync(filename);

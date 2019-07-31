@@ -2,6 +2,8 @@ $songHeight: 68px;
 $songListOpacity: 0.9;
 $filterHeight: 48px;
 $bottomPanelHeight: 176px;
+$statusBarHeight: 32px;
+$totalBottomHeight: $bottomPanelHeight + $statusBarHeight;
 $playlistsWidth: 300px;
 
 *
@@ -347,7 +349,7 @@ canvas
         left: 0;
         top: $filterHeight;
         width: calc(100% - #{$playlistsWidth});
-        height: calc(100% - #{$bottomPanelHeight} - #{$filterHeight});
+        height: calc(100% - #{$totalBottomHeight} - #{$filterHeight});
         overflow: auto;
         user-select: none;
         display: inline-block;
@@ -509,7 +511,7 @@ canvas
         position: absolute;
         top: $filterHeight;
         right: 0;
-        height: calc(100% - #{$bottomPanelHeight} - #{$filterHeight});
+        height: calc(100% - #{$totalBottomHeight} - #{$filterHeight});
         width: $playlistsWidth;
         box-sizing: border-box;
         margin: 0;
@@ -541,8 +543,28 @@ canvas
                     text-align: center;
                     font-weight: bold;
                 }
+
+                &.editing
+                {
+                    background-color: rgba(255,255,255,1);
+                    color: #111;
+                }
             }
         }
+    }
+
+    .statusBar
+    {
+        position: absolute;
+        left: 0;
+        bottom: 0;
+        width: 100%;
+        height: $statusBarHeight;
+        line-height: $statusBarHeight;
+        background-color: #222;
+        box-sizing: border-box;
+        color: #ccc;
+        padding: 0 8px;
     }
 
     .bottomPanel
@@ -554,7 +576,7 @@ canvas
         $shuffleWidth: 32px;
 
         position: absolute;
-        bottom: 0;
+        bottom: $statusBarHeight;
         height: $bottomPanelHeight;
         width: 100%;
         background-color: rgba(0,0,0,0.8);
@@ -757,7 +779,7 @@ canvas
 {
     z-index: -1;
     opacity: 0.7;
-    height: calc(100% - #{$bottomPanelHeight} - #{$filterHeight});
+    height: calc(100% - #{$totalBottomHeight} - #{$filterHeight});
     position: absolute;
     top: $filterHeight;
     left: 0;

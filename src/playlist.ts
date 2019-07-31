@@ -6,7 +6,7 @@ import { SafeWriter } from "./safewriter";
 import { EventClass } from "./eventclass";
 import { Metadata, PlaylistItem } from "./playlistitem";
 import { Song } from "./song";
-import { PlaylistData, SongData, PathData } from "./playlistdata";
+import { PlaylistData } from "./playlistdata";
 
 export class Playlist extends EventClass
 {
@@ -118,16 +118,23 @@ export class Playlist extends EventClass
             this._playlistData = playlistData;
             this.emitEvent("loadstart");
 
-            playlistData.items.forEach(item =>
+            playlistData.paths.forEach(path =>
             {
-                switch (item.type)
+                try
                 {
-                    case "song":
-                        this.loadSong(item.data);
-                        break;
-                    case "path":
-                        this.loadPath(item.data);
-                        break;
+                    let stats = fs.statSync(path);
+                    if (stats.isFile())
+                    {
+                        this.loadSong(path);
+                    }
+                    else
+                    {
+                        this.loadPath(path);
+                    }
+                }
+                catch (err)
+                {
+                    throw err;
                 }
             });
 
@@ -155,12 +162,12 @@ export class Playlist extends EventClass
 
     // need to handle internal sorting of paths //
 
-    private loadSong(data : SongData)
+    private loadSong(filename : string)
     {
-        if (this.filenameAllowed(data.filename))
+        if (this.filenameAllowed(filename))
         {
             this.loadingAmount++;
-            let s = new Song(data.filename);
+            let s = new Song(filename);
             s.once("load", () =>
             {
                 if (s.matchesFilter(this.permFilter))
@@ -174,16 +181,14 @@ export class Playlist extends EventClass
         }
     }
 
-    private loadPath(data : PathData)
+    private loadPath(path : string)
     {
-        this.permFilter = this.sortFromFilter(data.filter);
-
         try
         {
-            console.time("loading path " + data.path);
-            let filenames : string[] = dir.files(data.path, { sync: true });
-            filenames.forEach(filename => this.loadSong({ filename }));
-            console.timeEnd("loading path " + data.path);
+            console.time("loading path " + path);
+            let filenames : string[] = dir.files(path, { sync: true });
+            filenames.forEach(filename => this.loadSong(filename));
+            console.timeEnd("loading path " + path);
         }
         catch (err)
         {
@@ -395,7 +400,7 @@ export class Playlist extends EventClass
                 }
                 else
                 {
-                    return !!(+(pa >= pb) ^ +(order[0] === "a"));
+                    return !!(+(pa >= pb) ^ +(order[0] === "a")); // lol huh ???
                 }
             }
 
@@ -536,7 +541,8 @@ export class Playlist extends EventClass
     {
         if (this._previewFilter)
         {
-            return this.getFilterList(this._previewFilter);
+            console.log(this._filter + " " + this._previewFilter);
+            return this.getFilterList(this._filter + " " + this._previewFilter);
         }
         else
         {

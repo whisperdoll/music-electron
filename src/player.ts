@@ -1,5 +1,5 @@
 import { Widget } from "./widget";
-import { fileExists, getUserDataPath, getFileId, createElement, getRainbowColor, getCurrentMs, array_contains, isFileNotFoundError, getFileIdSync, array_remove_all } from "./util";
+import { fileExists, getUserDataPath, getFileId, createElement, getRainbowColor, getCurrentMs, array_contains, isFileNotFoundError, getFileIdSync, array_remove_all, secsToMinSecs } from "./util";
 import * as path from "path"
 import * as fs from "fs"
 import { SafeWriter } from "./safewriter";
@@ -171,6 +171,7 @@ export class Player extends Widget
     {
         this.wavesurfer.empty();
         this.emitEvent("stop");
+        this.awaitingPlayback = false;
     }
 
     public play(filename? : string, restart : boolean = false) : boolean
@@ -235,6 +236,7 @@ export class Player extends Widget
     {
         this.wavesurfer.pause();
         this.emitEvent("pause");
+        this.awaitingPlayback = false;
     }
 
     public seekMs(ms : number) : void
@@ -249,40 +251,7 @@ export class Player extends Widget
 
     public get currentTimeMinSec() : string
     {
-        let nsecs = Math.floor(this.wavesurfer.getCurrentTime() % 60);
-        let nmins = Math.floor(this.wavesurfer.getCurrentTime() / 60);
-        let secs : string;
-        let mins : string;
-
-        if (isNaN(nsecs))
-        {
-            secs = "--";
-        }
-        else
-        {
-            secs = nsecs.toString();
-        }
-
-        if (isNaN(nmins))
-        {
-            mins = "--";
-        }
-        else
-        {
-            mins = nmins.toString();
-        }
-
-
-        if (secs.length === 1)
-        {
-            secs = "0" + secs;
-        }
-        if (mins.length === 1)
-        {
-            mins = "0" + mins;
-        }
-
-        return mins + ":" + secs;
+        return secsToMinSecs(this.wavesurfer.getCurrentTime());
     }
 
     public get durationMs() : number
@@ -292,39 +261,7 @@ export class Player extends Widget
 
     public get durationMinSec() : string
     {
-        let nsecs = Math.floor(this.wavesurfer.getDuration() % 60);
-        let nmins = Math.floor(this.wavesurfer.getDuration() / 60);
-        let secs : string;
-        let mins : string;
-
-        if (isNaN(nsecs))
-        {
-            secs = "--";
-        }
-        else
-        {
-            secs = nsecs.toString();
-        }
-
-        if (isNaN(nmins))
-        {
-            mins = "--";
-        }
-        else
-        {
-            mins = nmins.toString();
-        }
-
-        if (secs.length === 1)
-        {
-            secs = "0" + secs;
-        }
-        if (mins.length === 1)
-        {
-            mins = "0" + mins;
-        }
-
-        return mins + ":" + secs;
+        return secsToMinSecs(this.wavesurfer.getDuration());
     }
 
     private cacheWaveform(filename : string, fid : string) : void

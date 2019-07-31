@@ -105,4 +105,14 @@ export class Widget extends EventClass
             return this.contentContainer.contains(child.container);
         }
     }
+
+    public get innerText() : string
+    {
+        return this.contentContainer.innerText;
+    }
+
+    public set innerText(innerText : string)
+    {
+        this.contentContainer.innerText = innerText;
+    }
 }

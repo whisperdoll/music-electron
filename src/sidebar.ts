@@ -1,16 +1,20 @@
 import { Widget } from "./widget";
-import { PlaylistData, PlaylistSavePath, PlaylistDataItem } from "./playlistdata";
-import { createElement, array_last, fileExists, mergeSorted } from "./util";
+import { PlaylistData, PlaylistSavePath } from "./playlistdata";
+import { createElement, array_last, fileExists, mergeSorted, array_remove } from "./util";
 const dir = require("node-dir");
 import * as fs from "fs";
 import { SafeWriter } from "./safewriter";
 import * as path from "path";
+import { ContextMenu, ContextMenuItem } from "./contextmenu";
 
 export class Sidebar extends Widget
 {
     private playlists : PlaylistData[] = [];
     private playlistList : HTMLUListElement;
+    private playlistMap : Map<PlaylistData, HTMLElement> = new Map<PlaylistData, HTMLElement>();
     private addPlaylistElement : HTMLElement;
+    private contextMenu : ContextMenu;
+    private contextPlaylist : PlaylistData;
 
     constructor(container : HTMLElement)
     {
@@ -24,9 +28,40 @@ export class Sidebar extends Widget
         this.addPlaylistElement.addEventListener("click", this.addPlaylist.bind(this));
 
         this.playlistList = <HTMLUListElement>createElement("ul", "list");
-        this.appendChild(this.playlistList);
+
+        this.contextMenu = new ContextMenu();
+        this.contextMenu.addItem(new ContextMenuItem("Edit", this.editContextPlaylist.bind(this)));
+        this.contextMenu.addItem(new ContextMenuItem("Delete", this.deleteContextPlaylist.bind(this)));
+
+        this.appendChild(this.playlistList, this.contextMenu);
 
         this.load();
+    }
+
+    private renamePlaylist(playlist : PlaylistData, name : string) : void
+    {
+        let oldPath = this.filenameForPlaylist(playlist);
+        playlist.name = name;
+        fs.renameSync(oldPath, this.filenameForPlaylist(playlist));
+        this.savePlaylist(playlist);
+        this.construct();
+    }
+
+    private editContextPlaylist() : void
+    {
+        
+    }
+
+    private deleteContextPlaylist() : void
+    {
+        if (!this.contextPlaylist)
+        {
+            return;
+        }
+
+        fs.unlinkSync(this.filenameForPlaylist(this.contextPlaylist));
+        array_remove(this.playlists, this.contextPlaylist);
+        this.construct();
     }
 
     private construct() : void
@@ -46,7 +81,33 @@ export class Sidebar extends Widget
         let element = createElement("li", "listItem");
         element.innerText = playlistData.name;
         element.addEventListener("dblclick", () => this.emitEvent("playlistselect", playlistData));
+        element.addEventListener("contextmenu", (e) =>
+        {
+            this.contextPlaylist = playlistData;
+            this.contextMenu.show(e.layerX, e.layerY);
+        });
+        element.addEventListener("keydown", (e) =>
+        {
+            if (element.contentEditable === "true" && e.which === 13)
+            {
+                // enter //
+                this.renamePlaylist(playlistData, element.innerText);
+            }
+            else if (element.contentEditable === "true" && e.which === 27)
+            {
+                // escape //
+                element.innerText = playlistData.name;
+                element.contentEditable = "false";
+                element.classList.remove("editing");
+            }
+        });
         this.playlistList.appendChild(element);
+        this.playlistMap.set(playlistData, element);
+    }
+
+    private filenameForPlaylist(playlist : PlaylistData) : string
+    {
+        return path.join(PlaylistSavePath, playlist.name + ".playlist");
     }
 
     private addPlaylist() : void
@@ -61,7 +122,7 @@ export class Sidebar extends Widget
         let newPlaylist =
         {
             name: "Playlist " + num.toString(),
-            items: <PlaylistDataItem[]>[],
+            paths: <string[]>[],
             created: Date.now()
         };
 
@@ -70,7 +131,12 @@ export class Sidebar extends Widget
         this.constructPlaylistElement(newPlaylist);
         this.playlistList.appendChild(this.addPlaylistElement);
 
-        SafeWriter.write(path.join(PlaylistSavePath, newPlaylist.name + ".playlist"), JSON.stringify(newPlaylist));
+        this.savePlaylist(newPlaylist);
+    }
+
+    private savePlaylist(playlist : PlaylistData) : void
+    {
+        SafeWriter.writeSync(this.filenameForPlaylist(playlist), JSON.stringify(playlist));
     }
 
     private load()
@@ -101,7 +167,7 @@ export class Sidebar extends Widget
                 }
             });
 
-            this.playlists = mergeSorted(this.playlists, (a, b) => a.name < b.name);
+            this.playlists = mergeSorted(this.playlists, (a, b) => a.created < b.created);
 
             this.construct();
             this.emitEvent("load");

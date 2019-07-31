@@ -33,6 +33,7 @@ export class PlaylistWidget extends Widget
         this.createEvent("dblclickitem");
         this.createEvent("rightclick");
         this.createEvent("reset");
+        this.createEvent("selectionchange");
 
         this.playlist = new Playlist();
         this.playlist.on("load", this.construct.bind(this));
@@ -62,6 +63,7 @@ export class PlaylistWidget extends Widget
     public loadPlaylist(playlistData : PlaylistData) : void
     {
         this.playlist.loadPlaylist(playlistData);
+        this.deselectAll();
     }
 
     public itemAfter(playlistItemWidget : PlaylistItemWidget) : PlaylistItemWidget
@@ -225,7 +227,7 @@ export class PlaylistWidget extends Widget
         };
     }
 
-    public select(itemWidget : PlaylistItemWidget, removeOthers : boolean = false) : void
+    public select(itemWidget : PlaylistItemWidget, removeOthers : boolean = false, emitEvent : boolean = true) : void
     {
         if (this.currentSelection.length > 0)
         {
@@ -233,18 +235,20 @@ export class PlaylistWidget extends Widget
             {
                 this.deselectAll();
                 this.select(itemWidget);
-                return;
+                emitEvent && this.emitEvent("selectionchange");
             }
             else if (this.currentSelection.indexOf(itemWidget) === -1)
             {
                 array_insert(this.currentSelection, itemWidget, this.sortFn);
                 this.doSelectThings(itemWidget);
+                emitEvent && this.emitEvent("selectionchange");
             }
         }
         else
         {
             this.currentSelection = [ itemWidget ];
             this.doSelectThings(itemWidget);
+            emitEvent && this.emitEvent("selectionchange");
         }
     }
 
@@ -255,21 +259,23 @@ export class PlaylistWidget extends Widget
         while (this.currentSelection.length > 0)
         {
             let itemWidget = this.currentSelection[0];
-            this.deselect(itemWidget, true);
+            this.deselect(itemWidget, true, false);
             newIndexes.push(this.renderedSongs.indexOf(itemWidget) + amount);
         }
 
         newIndexes.forEach(newIndex =>
         {
-            this.select(array_item_at(this.renderedSongs, newIndex), false);
+            this.select(array_item_at(this.renderedSongs, newIndex), false, false);
         });
+
+        this.emitEvent("selectionchange");
     }
 
     public selectRange(item1 : PlaylistItemWidget, item2: PlaylistItemWidget, removeOthers : boolean = false) : void
     {
         if (removeOthers)
         {
-            this.deselectAll();
+            this.deselectAll(false);
         }
 
         let sort = this.playlist.sortFn(item1.item, item2.item);
@@ -297,6 +303,7 @@ export class PlaylistWidget extends Widget
         });
 
         this.currentSelection.push(...toAdd);
+        this.emitEvent("selectionchange");
     }
 
     // called by selection functions //
@@ -341,16 +348,18 @@ export class PlaylistWidget extends Widget
         this.selectRange(this.renderedSongs[0], array_last(this.renderedSongs));
     }
 
-    public deselect(itemWidget : PlaylistItemWidget, remove : boolean = true) : void
+    public deselect(itemWidget : PlaylistItemWidget, remove : boolean = true, emitEvent : boolean = true) : void
     {
         itemWidget.container.classList.remove("selected");
         if (remove)
         {
             array_remove(this.currentSelection, itemWidget);
         }
+
+        emitEvent && this.emitEvent("selectionchange");
     }
 
-    public deselectAll() : void
+    public deselectAll(emitEvent : boolean = true) : void
     {
         this.currentSelection.forEach(itemWidget =>
         {
@@ -358,6 +367,7 @@ export class PlaylistWidget extends Widget
         });
 
         this.currentSelection = [];
+        emitEvent && this.emitEvent("selectionchange");
     }
 
     public get renderedSongs() : PlaylistItemWidget[]
@@ -411,9 +421,16 @@ export class PlaylistWidget extends Widget
         }
         else
         {
-            this.select(itemWidget, true);
-            this.dragging = true;
-            this.dragOrigin = { x: e.clientX, y: e.clientY };
+            if (!array_contains(this.currentSelection, itemWidget))
+            {
+                this.select(itemWidget, true);
+            }
+
+            if (e.button === 0)
+            {
+                this.dragging = true;
+                this.dragOrigin = { x: e.clientX, y: e.clientY };
+            }
         }
     }
 
