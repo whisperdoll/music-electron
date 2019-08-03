@@ -1,4 +1,4 @@
-import { endsWith, mergeSorted, array_copy, array_shuffle, SortFunction, array_swap, getUserDataPath, array_item_at, bigintStat, bigintStatSync, emptyFn } from "./util";
+import { endsWith, mergeSorted, array_copy, array_shuffle, SortFunction, array_swap, getUserDataPath, array_item_at, bigintStat, bigintStatSync, emptyFn, array_remove_multiple } from "./util";
 const dir = require("node-dir");
 import * as fs from "fs";
 import * as npath from "path";
@@ -37,6 +37,7 @@ export class Playlist extends EventClass
     private loadingAmount : number;
     private loadedSoFar : number;
     private _playlistData : PlaylistData;
+    private songPathMap : Map<Song, string> = new Map<Song, string>();
 
     private _sortFn : SortFunction<PlaylistItem> = this.defaultSortFn;
 
@@ -45,10 +46,13 @@ export class Playlist extends EventClass
     private _loadCheck : boolean = false;
 
     private _resetCallback : Function = null;
+    private savePlaylist : (playlist : PlaylistData) => void;
 
-    constructor()
+    constructor(savePlaylistFn : (playlist : PlaylistData) => void)
     {
         super();
+
+        this.savePlaylist = savePlaylistFn;
 
         this.createEvent("loadstart");
         this.createEvent("load");
@@ -64,6 +68,11 @@ export class Playlist extends EventClass
         {
             Playlist.loadMetadata();
         }
+    }
+
+    public songParentPath(song : Song) : string
+    {
+        return this.songPathMap.get(song);
     }
 
     public get sortFn()
@@ -153,8 +162,9 @@ export class Playlist extends EventClass
         {
             this._loading = false;
             this._loaded = true;
-            this.sort(this.sortFn, false);
+            this.permFilter = this.playlistData.filter;
             this.filter(this.permFilter, false);
+            this._defaultSortFn = this.sortFn;
             this.emitEvent("load");
             console.timeEnd("loading playlist " + this.playlistData.name);
         }
@@ -162,7 +172,7 @@ export class Playlist extends EventClass
 
     // need to handle internal sorting of paths //
 
-    private loadSong(filename : string)
+    private loadSong(filename : string) : Song
     {
         if (this.filenameAllowed(filename))
         {
@@ -178,7 +188,10 @@ export class Playlist extends EventClass
                 this.progressLoading();
             });
             s.load();
+            return s;
         }
+
+        return null;
     }
 
     private loadPath(path : string)
@@ -187,7 +200,14 @@ export class Playlist extends EventClass
         {
             console.time("loading path " + path);
             let filenames : string[] = dir.files(path, { sync: true });
-            filenames.forEach(filename => this.loadSong(filename));
+            filenames.forEach(filename => 
+            {
+                let s : Song;
+                if (s = this.loadSong(filename))
+                {
+                    this.songPathMap.set(s, path);
+                }
+            });
             console.timeEnd("loading path " + path);
         }
         catch (err)
@@ -238,6 +258,13 @@ export class Playlist extends EventClass
     public get loaded() : boolean
     {
         return this._loaded;
+    }
+
+    public removeSongs(songs : Song[]) : void
+    {
+        array_remove_multiple(this.items, songs);
+        array_remove_multiple(this.playlistData.paths, songs.map(song => song.filename));
+        this.savePlaylist(this.playlistData);
     }
 
     public shuffle() : void
@@ -364,7 +391,7 @@ export class Playlist extends EventClass
 
         if (!didASort && this.sortFn !== this.defaultSortFn)
         {
-            //this.sort(this.defaultSortFn, rerender);
+            this.sort(this.defaultSortFn, rerender);
         }
 
         return filter;

@@ -15,6 +15,7 @@ import { PlaylistItemWidget } from "./playlistitemwidget";
 import { Sidebar } from "./sidebar";
 import { PlaylistData } from "./playlistdata";
 import { StatusBar } from "./statusbar";
+import { PlaylistDialog } from "./playlistdialog";
 
 export class MainPlayer extends Widget
 {
@@ -27,7 +28,6 @@ export class MainPlayer extends Widget
     private songMenu : ContextMenu;
     private playlistMenu : ContextMenu;
     private renameDialog : RenameDialog;
-    //private playlistDialog : PlaylistDialog;
     private spectrum : Spectrum;
 
     private currentlyPlaying : PlaylistItemWidget;
@@ -43,13 +43,14 @@ export class MainPlayer extends Widget
     {
         super(container);
 
-        this.playlistWidget = new PlaylistWidget(createElement("div", "songList"));
         this.bottomBar = new BottomBar(createElement("div", "bottomPanel"));
         this.statusBar = new StatusBar(this.playlistWidget);
         this.filter = new Filter(createElement("div", "filter-container"));
         this.player = new Player(this.bottomBar.wavebar);
         this.spectrum = new Spectrum();
-        this.sidebar = new Sidebar(createElement("div", "sidebar"));
+        this.sidebar = new Sidebar(createElement("div", "sidebar"), this.container);
+        this.playlistWidget = new PlaylistWidget(this.sidebar.savePlaylist.bind(this.sidebar), createElement("div", "songList"));
+
 
         this.renameDialog = new RenameDialog(((err : NodeJS.ErrnoException) =>
         {
@@ -67,17 +68,42 @@ export class MainPlayer extends Widget
         let playlistLoadedCondition = () => this.playlistWidget.playlist.loaded;
         let itemSelectedCondition = () => this.playlistWidget.currentSelection.length > 0;
         let songSelectedCondition = () => itemSelectedCondition() && this.playlistWidget.currentSelectionItems.every(item => item instanceof Song);
+        let songIsPartOfPathCondition = () => this.playlistWidget.currentSelectionItems.every(item => !!this.playlistWidget.playlist.songParentPath(<Song>item));
+        let songIsAloneCondition = () => this.playlistWidget.currentSelectionItems.every(item => !this.playlistWidget.playlist.songParentPath(<Song>item));
 
         this.songMenu = new ContextMenu();
         this.songMenu.addItem(new ContextMenuItem("Rename...", this.promptRename.bind(this), songSelectedCondition));
         //this.songMenu.addItem(new ContextMenuItem("Edit rules...", this.editRules.bind(this)));
         this.songMenu.addItem(new ContextMenuItem("Reveal in explorer", this.revealInExplorer.bind(this), songSelectedCondition));
         this.songMenu.addItem(new ContextMenuItem("Skip once", this.skipSongOnce.bind(this), itemSelectedCondition));
+        this.songMenu.addItem(new ContextMenuItem("Remove Song", this.removeSelectedSongs.bind(this), songIsAloneCondition));
 
         this.playlistMenu = new ContextMenu();
         let playListItem = new ContextMenuItem("Add to playlist", undefined, itemSelectedCondition);
         playListItem.subMenu = this.playlistMenu;
         this.songMenu.addItem(playListItem);
+        this.sidebar.on("playlistschange", (playlists : PlaylistData[]) =>
+        {
+            this.playlistMenu.clear();
+
+            playlists.forEach(playlist =>
+            {
+                    let menuItem = new ContextMenuItem(
+                        playlist.name,
+                        () =>
+                        {
+                            playlist.paths.push(...this.playlistWidget.currentSelection.map(itemWidget => itemWidget.item.getFilename()));
+                            this.sidebar.savePlaylist(playlist);
+                        },
+                        () =>
+                        {
+                            return playlist !== this.playlistWidget.playlistData
+                        }
+                    );
+
+                    this.playlistMenu.addItem(menuItem);
+            });
+        });
         
         this.songMenu.addItem(new ContextMenuItem("Remove from playlist", this.removeFromPlaylist.bind(this), itemSelectedCondition));
 
@@ -276,6 +302,11 @@ export class MainPlayer extends Widget
         this.playlists.hide();
         this.playlistWidget.container.style.width = "100%";
     }*/
+
+    private removeSelectedSongs() : void
+    {
+        this.playlistWidget.removeSelected();
+    }
 
     private promptRename() : void
     {

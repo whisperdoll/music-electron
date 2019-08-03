@@ -94,6 +94,18 @@ export class Widget extends EventClass
         return true;
     }
 
+    public removeChildren(children : (HTMLElement | Widget)[]) : boolean[]
+    {
+        let ret : boolean[] = [];
+
+        children.forEach((child : HTMLElement | Widget) =>
+        {
+            ret.push(this.removeChild(child));
+        });
+
+        return ret;
+    }
+
     public hasChild(child : HTMLElement | Widget)
     {
         if (child instanceof HTMLElement)
@@ -114,5 +126,20 @@ export class Widget extends EventClass
     public set innerText(innerText : string)
     {
         this.contentContainer.innerText = innerText;
+    }
+
+    public get innerHTML() : string
+    {
+        return this.contentContainer.innerHTML;
+    }
+
+    public set innerHTML(innerHTML : string)
+    {
+        this.contentContainer.innerHTML = innerHTML;
+    }
+
+    public clear() : void
+    {
+        this.innerHTML = "";
     }
 }

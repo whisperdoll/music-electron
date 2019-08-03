@@ -9,6 +9,7 @@ import * as archiver from "archiver";
 import { array_remove, array_last, revealInExplorer, isFileNotFoundError, array_contains, array_item_at, array_insert, SortFunction } from "./util";
 import { PlaylistItem } from "./playlistitem";
 import { PlaylistData } from "./playlistdata";
+import { Song } from "./song";
 
 export class PlaylistWidget extends Widget
 {
@@ -24,7 +25,7 @@ export class PlaylistWidget extends Widget
 
     private zipOverlay : Dialog;
 
-    constructor(container? : HTMLElement)
+    constructor(savePlaylistFn : (playlist : PlaylistData) => void, container? : HTMLElement)
     {
         super(container || "songList");
 
@@ -35,7 +36,7 @@ export class PlaylistWidget extends Widget
         this.createEvent("reset");
         this.createEvent("selectionchange");
 
-        this.playlist = new Playlist();
+        this.playlist = new Playlist(savePlaylistFn);
         this.playlist.on("load", this.construct.bind(this));
         this.playlist.on("change", this.render.bind(this));
         this.playlist.on("loadstart", () => this.emitEvent("loadstart"));
@@ -373,6 +374,17 @@ export class PlaylistWidget extends Widget
     public get renderedSongs() : PlaylistItemWidget[]
     {
         return this._renderedItems;
+    }
+
+    public removeSelected() : void
+    {
+        this.removeItemWidgets(this.currentSelection);
+    }
+
+    private removeItemWidgets(itemWidgets : PlaylistItemWidget[]) : void
+    {
+        this.removeChildren(itemWidgets);
+        this.playlist.removeSongs(itemWidgets.map(itemWidget => <Song>itemWidget.item));
     }
 
     private itemMousedownFn(itemWidget : PlaylistItemWidget, e : MouseEvent) : void

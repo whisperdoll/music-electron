@@ -6,22 +6,27 @@ import * as fs from "fs";
 import { SafeWriter } from "./safewriter";
 import * as path from "path";
 import { ContextMenu, ContextMenuItem } from "./contextmenu";
+import { PlaylistDialog } from "./playlistdialog";
 
 export class Sidebar extends Widget
 {
     private playlists : PlaylistData[] = [];
     private playlistList : HTMLUListElement;
     private playlistMap : Map<PlaylistData, HTMLElement> = new Map<PlaylistData, HTMLElement>();
+    private playlistFilenames : Map<PlaylistData, string> = new Map<PlaylistData, string>();
     private addPlaylistElement : HTMLElement;
     private contextMenu : ContextMenu;
     private contextPlaylist : PlaylistData;
+    private playlistDialog : PlaylistDialog;
+    private contextOgName : string;
 
-    constructor(container : HTMLElement)
+    constructor(container : HTMLElement, parentContainer : HTMLElement)
     {
         super(container);
 
         this.createEvent("load");
         this.createEvent("playlistselect");
+        this.createEvent("playlistschange");
 
         this.addPlaylistElement = createElement("li", "listItem add");
         this.addPlaylistElement.innerText = "+";
@@ -35,21 +40,45 @@ export class Sidebar extends Widget
 
         this.appendChild(this.playlistList, this.contextMenu);
 
+        this.playlistDialog = new PlaylistDialog();
+        this.playlistDialog.on("return", (playlistData : PlaylistData) =>
+        {
+            if (playlistData.name !== this.contextOgName)
+            {
+                this.renamePlaylist(playlistData, playlistData.name);
+            }
+            else
+            {
+                this.savePlaylist(playlistData);
+            }
+        });
+
+        parentContainer.appendChild(this.playlistDialog.container);
+
         this.load();
     }
 
     private renamePlaylist(playlist : PlaylistData, name : string) : void
     {
+        console.log(playlist, this.playlistFilenames);
         let oldPath = this.filenameForPlaylist(playlist);
         playlist.name = name;
+        this.createFilenameForPlaylist(playlist);
         fs.renameSync(oldPath, this.filenameForPlaylist(playlist));
         this.savePlaylist(playlist);
         this.construct();
+
+        this.emitEvent("playlistschange", this.playlists);
     }
 
     private editContextPlaylist() : void
     {
-        
+        if (!this.contextPlaylist)
+        {
+            return;
+        }
+
+        this.playlistDialog.show(this.contextPlaylist);
     }
 
     private deleteContextPlaylist() : void
@@ -62,6 +91,7 @@ export class Sidebar extends Widget
         fs.unlinkSync(this.filenameForPlaylist(this.contextPlaylist));
         array_remove(this.playlists, this.contextPlaylist);
         this.construct();
+        this.emitEvent("playlistschange", this.playlists);
     }
 
     private construct() : void
@@ -84,6 +114,7 @@ export class Sidebar extends Widget
         element.addEventListener("contextmenu", (e) =>
         {
             this.contextPlaylist = playlistData;
+            this.contextOgName = playlistData.name;
             this.contextMenu.show(e.layerX, e.layerY);
         });
         element.addEventListener("keydown", (e) =>
@@ -105,9 +136,19 @@ export class Sidebar extends Widget
         this.playlistMap.set(playlistData, element);
     }
 
+    private createFilenameForPlaylist(playlist : PlaylistData) : void
+    {
+        this.playlistFilenames.set(playlist, path.join(PlaylistSavePath, playlist.name + ".playlist"));
+    }
+
     private filenameForPlaylist(playlist : PlaylistData) : string
     {
-        return path.join(PlaylistSavePath, playlist.name + ".playlist");
+        if (!this.playlistFilenames.has(playlist))
+        {
+            this.createFilenameForPlaylist(playlist);
+        }
+
+        return this.playlistFilenames.get(playlist);
     }
 
     private addPlaylist() : void
@@ -123,7 +164,8 @@ export class Sidebar extends Widget
         {
             name: "Playlist " + num.toString(),
             paths: <string[]>[],
-            created: Date.now()
+            created: Date.now(),
+            filter: ""
         };
 
         this.playlists.push(newPlaylist);
@@ -132,9 +174,10 @@ export class Sidebar extends Widget
         this.playlistList.appendChild(this.addPlaylistElement);
 
         this.savePlaylist(newPlaylist);
+        this.emitEvent("playlistschange", this.playlists);
     }
 
-    private savePlaylist(playlist : PlaylistData) : void
+    public savePlaylist(playlist : PlaylistData) : void
     {
         SafeWriter.writeSync(this.filenameForPlaylist(playlist), JSON.stringify(playlist));
     }
@@ -160,6 +203,7 @@ export class Sidebar extends Widget
                     let data = fs.readFileSync(filename, "utf8");
                     let playlistData = <PlaylistData>JSON.parse(data);
                     this.playlists.push(playlistData);
+                    this.playlistFilenames.set(playlistData, filename);
                 }
                 catch (err)
                 {
@@ -171,6 +215,7 @@ export class Sidebar extends Widget
 
             this.construct();
             this.emitEvent("load");
+            this.emitEvent("playlistschange", this.playlists);
         });
     }
 }

@@ -7,5 +7,6 @@ export interface PlaylistData
 {
     name : string,
     paths : string[],
+    filter : string,
     created : number
 }

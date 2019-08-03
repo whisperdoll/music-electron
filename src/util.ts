@@ -278,6 +278,18 @@ export function array_remove<T>(array : T[], item : T) : { item : T, index : num
     return { item, index: -1, existed: false };
 }
 
+export function array_remove_multiple<T>(array : T[], items : T[]) : void
+{
+    items.forEach(item =>
+    {
+        let index = array.indexOf(item);
+        if (index !== -1)
+        {
+            array.splice(index, 1);
+        }
+    });
+}
+
 export function array_remove_all<T>(array : T[], item : T) : { item : T, indexes : number[], existed : boolean }
 {
     let indexes = [];
