@@ -3,6 +3,8 @@ import { InputDialog } from "./inputdialog";
 import { createElement, createOptionElement, showElement, hideElement } from "./util";
 import { PlaylistData } from "./playlistdata";
 import * as path from "path";
+import { Widget } from "./widget";
+import { PlaylistDialogItems } from "./playlistdialogitems";
 
 export class PlaylistDialog extends Dialog
 {
@@ -10,11 +12,15 @@ export class PlaylistDialog extends Dialog
 
     private nameLabel : HTMLSpanElement;
     private nameInput : HTMLInputElement;
+
+    private sortLabel : HTMLSpanElement;
+    private sortInput : HTMLInputElement;
+
     private filterLabel : HTMLSpanElement;
     private filterInput : HTMLInputElement;
-    private pathsInput : HTMLTextAreaElement;
-    private pathSelect : HTMLInputElement;
-    private pathSelectLabel : HTMLLabelElement;
+
+    private items : PlaylistDialogItems;
+    
     private okButton : HTMLElement;
     private cancelButton : HTMLElement;
 
@@ -25,11 +31,15 @@ export class PlaylistDialog extends Dialog
         super(true);
 
         this.createEvent("return");
+        this.createEvent("pathchoose");
         
         this.container.classList.add("playlist");
 
         this.nameLabel = <HTMLSpanElement>createElement("span", "nameLabel");
         this.nameLabel.innerText = "Name:";
+
+        this.sortLabel = <HTMLSpanElement>createElement("span", "sortLabel");
+        this.sortLabel.innerText = "Sort:";
 
         this.filterLabel = <HTMLSpanElement>createElement("span", "filterLabel");
         this.filterLabel.innerText = "Filter:";
@@ -37,26 +47,16 @@ export class PlaylistDialog extends Dialog
         this.nameInput = <HTMLInputElement>createElement("input", "name");
         this.nameInput.type = "text";
 
+        this.sortInput = <HTMLInputElement>createElement("input", "sort");
+        this.sortInput.type = "text";
+
         this.filterInput = <HTMLInputElement>createElement("input", "filter");
         this.filterInput.type = "text";
-
-        this.pathsInput = <HTMLTextAreaElement>createElement("textarea", "paths");
-
-        this.pathSelect = <HTMLInputElement>createElement("input", "pathSelect");
-        this.pathSelect.type = "file";
-        this.pathSelect.setAttribute("webkitdirectory", "true");
-        this.pathSelect.addEventListener("change", () =>
-        {
-            let files = Array.from(this.pathSelect.files).map(file => file.path);
-            this.pathsInput.value += files.join("\n");
-        });
-
-        this.pathSelectLabel = <HTMLLabelElement>createElement("label", "pathSelectLabel");
-        this.pathSelectLabel.innerText = "Add Folder(s)...";
-        this.pathSelectLabel.appendChild(this.pathSelect);
+        
+        this.items = new PlaylistDialogItems();
 
         this.okButton = createElement("button", "ok");
-        this.okButton.innerText = "Create";
+        this.okButton.innerText = "Save";
         this.okButton.addEventListener("click", () =>
         {
             this.makeAndReturnObject();
@@ -74,10 +74,11 @@ export class PlaylistDialog extends Dialog
         this.appendChild(
             this.nameLabel,
             this.filterLabel,
+            this.sortLabel,
             this.nameInput,
             this.filterInput,
-            this.pathsInput,
-            this.pathSelectLabel,
+            this.sortInput,
+            this.items,
             this.okButton,
             this.cancelButton
         );
@@ -95,13 +96,11 @@ export class PlaylistDialog extends Dialog
             throw "ok u actually need a playlistdata";
         }
 
-        this.pathSelect.type = "";
-        this.pathSelect.type = "file";
-
         this.editing = playlistData;
         this.nameInput.value = playlistData.name;
+        this.sortInput.value = playlistData.sort;
         this.filterInput.value = playlistData.filter || "";
-        this.pathsInput.value = playlistData.paths ? playlistData.paths.join("\n") : "";
+        this.items.paths = playlistData.paths;
 
         super.show();
     }
@@ -112,8 +111,9 @@ export class PlaylistDialog extends Dialog
 
         ret = this.editing;
         ret.name = this.nameInput.value;
+        ret.sort = this.sortInput.value;
         ret.filter = this.filterInput.value;
-        ret.paths = this.pathsInput.value.trim() ? this.pathsInput.value.split("\n").map(p => path.normalize(p)) : [];
+        ret.paths = this.items.paths;
         
         this.emitEvent("return", ret);
     }

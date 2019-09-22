@@ -6,24 +6,88 @@ import * as fs from "fs";
 import * as path from "path";
 import { SafeWriter } from "./safewriter";
 import { EventClass } from "./eventclass";
-import { Metadata, PlaylistItem } from "./playlistitem";
 import { Playlist } from "./playlist";
+import { FileCache } from "./filecache";
 
-export class Song extends PlaylistItem
+export interface Metadata
 {
+    title : string,
+    artist : string,
+    album : string,
+    length : number,
+    picture : string,
+    plays : number,
+    track : number
+}
+
+export class Song extends EventClass
+{
+    private static idCounter = 0;
+    protected filterList : string[];
+    public metadata : Metadata;
+    public readonly id : string;
+
     private _filename : string;
     public tags : string[];
 
     public stats : fs.Stats;
 
+    private _selected : boolean = false;
+    private _skipping : boolean = false;
+    private _playing : boolean = false;
+
     constructor(filename : string)
     {
         super();
 
+        this.createEvent("load");
+        this.createEvent("updatestate");
+        this.createEvent("updatemetadata");
+
+        this.id = Song.genId();
+
         this.tags = [];
         this.stats =  bigintStatSync(filename);
         this._filename = path.normalize(filename);
-        this.metadata = Playlist.metadata[this.fid];
+        this.metadata = FileCache.metadata[this.fid];
+    }
+
+    public get selected() : boolean
+    {
+        return this._selected;
+    }
+
+    public set selected(selected : boolean)
+    {
+        this._selected = selected;
+        this.emitEvent("updatestate");
+    }
+
+    public get skipping() : boolean
+    {
+        return this._skipping;
+    }
+
+    public set skipping(skipping : boolean)
+    {
+        this._skipping = skipping;
+        this.emitEvent("updatestate");
+    }
+
+    public get playing() : boolean
+    {
+        return this._playing;
+    }
+
+    public set playing(playing : boolean)
+    {
+        this._playing = playing;
+        this.emitEvent("updatestate");
+    }
+
+    private static genId() : string
+    {
+        return (this.idCounter++).toString();
     }
 
     public get fid() : string
@@ -48,12 +112,124 @@ export class Song extends PlaylistItem
 
     public load() : void
     {
+        let afterLoad = () =>
+        {
+            this.emitEvent("load");
+            this.emitEvent("updatemetadata");
+            this.makeFilterList();
+        };
+
         if (!fileExists(this.filename))
         {
             throw "file not found: " + this.filename;
         }
+        
+        if (!this.metadata)
+        {
+            this.retrieveMetadata(afterLoad);
+        }
+        else
+        {
+            afterLoad();
+        }
+    }
 
-        super.load();
+    public refreshMetadata()
+    {
+        this.retrieveMetadata(() => this.emitEvent("updatemetadata"));
+    }
+
+    public matchesFilter(filter : string) : boolean
+    {
+        if (!filter)
+        {
+            return true;
+        }
+
+        if (filter.length > 1 && filter[0] === '(' && filter[filter.length - 1] === ')')
+        {
+            filter = filter.substr(1, filter.length - 2);
+            return this.matchesFilter(filter);
+        }
+
+        filter = filter.replace(/&/g, " ").trim();
+        while (filter.indexOf("  ") !== -1)
+        {
+            filter = filter.replace(/  /g, " ");
+        }
+
+        let pcounter = 0;
+        let quoteSwitch = false;
+        for (let i = 0; i < filter.length; i++)
+        {
+            if (filter[i] === "\\" && filter[i - 1] !== "\\")
+            {
+                i++;
+                continue;
+            }
+
+            if (filter[i] === '"')
+            {
+                quoteSwitch = !quoteSwitch;
+            }
+            else if (!quoteSwitch)
+            {
+                if (filter[i] === "(")
+                {
+                    pcounter++;
+                }
+                else if (filter[i] === ")" && pcounter > 0)
+                {
+                    pcounter--;
+                }
+                else if (filter[i] === "|" && pcounter === 0)
+                {
+                    let left = filter.substr(0, i);
+                    let right = filter.substr(i + 1);
+                    return this.matchesFilter(left) || this.matchesFilter(right);
+                }
+            }
+        }
+        
+        pcounter = 0;
+        quoteSwitch = false;
+        for (let i = 0; i < filter.length; i++)
+        {
+            if (filter[i] === "\\" && filter[i - 1] !== "\\")
+            {
+                i++;
+                continue;
+            }
+
+            if (filter[i] === '"')
+            {
+                quoteSwitch = !quoteSwitch;
+            }
+            else if (!quoteSwitch)
+            {
+                if (filter[i] === "(")
+                {
+                    pcounter++;
+                }
+                else if (filter[i] === ")" && pcounter > 0)
+                {
+                    pcounter--;
+                }
+                else if ((filter[i] === " ") && pcounter === 0)
+                {
+                    let left = filter.substr(0, i);
+                    let right = filter.substr(i + 1);
+                    return this.matchesFilter(left) && this.matchesFilter(right);
+                }
+            }
+        }
+
+        if (filter.length > 1 && filter[0] === '"' && filter[filter.length - 1] === '"')
+        {
+            filter = filter.substr(1, filter.length - 2);
+        }
+
+        return this.matchesFilterPart(filter);
     }
 
     public renameFile(newFilename : string, callback : (err : NodeJS.ErrnoException) => void) : void
@@ -151,7 +327,7 @@ export class Song extends PlaylistItem
         });
     }
 
-    public retrieveMetadata(callback? : Function) : void
+    private retrieveMetadata(callback? : Function) : void
     {
         mm.parseFile(this.filename).then((metadata : mm.IAudioMetadata) =>
         {
@@ -198,8 +374,8 @@ export class Song extends PlaylistItem
                         }
 
                         this.metadata.picture = src;
-                        Playlist.metadata[this.fid] = this.metadata;
-                        Playlist.writeCache();
+                        FileCache.metadata[this.fid] = this.metadata;
+                        FileCache.writeCache();
                         callback && callback();
                     });
                 }
@@ -207,8 +383,8 @@ export class Song extends PlaylistItem
             else
             {
                 this.metadata.picture = "";
-                Playlist.metadata[this.fid] = this.metadata;
-                Playlist.writeCache();
+                FileCache.metadata[this.fid] = this.metadata;
+                FileCache.writeCache();
                 callback && callback();
             }
         });

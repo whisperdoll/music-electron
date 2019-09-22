@@ -97,7 +97,6 @@ export class ContextMenuItem extends Widget
 
         this.container.addEventListener("mousedown", (e) =>
         {
-            console.log(e);
             if (this.parent)
             {
                 this.parent.hide();

@@ -24,6 +24,36 @@ export function revealInExplorer(filename : string) : void
     }
 }
 
+export function isFile(path : string) : boolean
+{
+    let stats = fs.statSync(path);
+    return stats.isFile();
+}
+
+export function mod(x : number, m : number) : number
+{
+    if (x >= 0)
+    {
+        return x % m;
+    }
+    else
+    {
+        return m - (-x % m);
+    }
+}
+
+export function numberArray(startInclusive : number, endExclusive : number) : number[]
+{
+    let ret = [];
+
+    for (let i = startInclusive; i < endExclusive; i++)
+    {
+        ret.push(i);
+    }
+
+    return ret;
+}
+
 export function secsToMinSecs(totalSecs : number) : string
 {
     let nsecs = Math.floor(totalSecs % 60);

@@ -1,5 +1,5 @@
 import { Widget } from "./widget";
-import { PlaylistData, PlaylistSavePath } from "./playlistdata";
+import { PlaylistData, PlaylistSavePath, PlaylistPath } from "./playlistdata";
 import { createElement, array_last, fileExists, mergeSorted, array_remove } from "./util";
 const dir = require("node-dir");
 import * as fs from "fs";
@@ -7,6 +7,7 @@ import { SafeWriter } from "./safewriter";
 import * as path from "path";
 import { ContextMenu, ContextMenuItem } from "./contextmenu";
 import { PlaylistDialog } from "./playlistdialog";
+import { exportZip } from "./playlistzipper";
 
 export class Sidebar extends Widget
 {
@@ -37,6 +38,7 @@ export class Sidebar extends Widget
         this.contextMenu = new ContextMenu();
         this.contextMenu.addItem(new ContextMenuItem("Edit", this.editContextPlaylist.bind(this)));
         this.contextMenu.addItem(new ContextMenuItem("Delete", this.deleteContextPlaylist.bind(this)));
+        this.contextMenu.addItem(new ContextMenuItem("Zip", this.zipContextPlaylist.bind(this)));
 
         this.appendChild(this.playlistList, this.contextMenu);
 
@@ -69,6 +71,16 @@ export class Sidebar extends Widget
         this.construct();
 
         this.emitEvent("playlistschange", this.playlists);
+    }
+
+    private zipContextPlaylist() : void
+    {
+        if (!this.contextPlaylist)
+        {
+            return;
+        }
+
+        exportZip(this.contextPlaylist);
     }
 
     private editContextPlaylist() : void
@@ -160,12 +172,13 @@ export class Sidebar extends Widget
             num++;
         }
 
-        let newPlaylist =
+        let newPlaylist : PlaylistData =
         {
             name: "Playlist " + num.toString(),
-            paths: <string[]>[],
+            paths: <PlaylistPath[]>[],
             created: Date.now(),
-            filter: ""
+            filter: "",
+            sort: ""
         };
 
         this.playlists.push(newPlaylist);

@@ -1,15 +1,16 @@
 import { Widget } from "./widget";
-import { PlaylistWidget } from "./playlistwidget";
+import { PlaylistView } from "./playlistview";
 import { createElement, secsToMinSecs } from "./util";
 
 export class StatusBar extends Widget
 {
     private selectionInfo : HTMLElement;
-    constructor(private playlistWidget : PlaylistWidget)
+    constructor(private playlistWidget : PlaylistView)
     {
         super("statusBar");
 
-        this.playlistWidget.on("selectionchange", () => this.update());
+        this.playlistWidget.playlist.on("selectionchange", () => this.update());
+        this.playlistWidget.playlist.on("update", () => this.update());
 
         this.selectionInfo = createElement("span");
 
@@ -18,9 +19,10 @@ export class StatusBar extends Widget
 
     private update() : void
     {
-        this.selectionInfo.innerText = this.playlistWidget.currentSelection.length + " item(s) selected";
+        let currentSelection = this.playlistWidget.playlist.currentSelection;
+        this.selectionInfo.innerText = currentSelection.length + " item(s) selected";
         let runningTime = 0;
-        this.playlistWidget.currentSelectionItems.forEach(item =>
+        currentSelection.forEach(item =>
         {
             runningTime += item.metadata.length;
         });

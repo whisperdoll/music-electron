@@ -137,9 +137,9 @@ canvas {
 }
 .dialog-backdrop.playlist .dialog {
   display: grid;
-  grid-template-areas: "typeLabel type type type" "nameLabel name name name" "filterLabel filter filter filter" "paths paths paths paths" "file file file file" "blank blank ok cancel";
+  grid-template-areas: "typeLabel type type type" "nameLabel name name name" "sortLabel sort sort sort" "filterLabel filter filter filter" "paths paths paths paths" "blank blank ok cancel";
   grid-template-columns: 50px auto 64px 64px;
-  grid-template-rows: auto auto auto auto auto auto;
+  grid-template-rows: auto auto auto auto auto;
   grid-gap: 6px;
 }
 .dialog-backdrop.playlist .dialog .typeLabel {
@@ -160,20 +160,58 @@ canvas {
 .dialog-backdrop.playlist .dialog .filter {
   grid-area: filter;
 }
-.dialog-backdrop.playlist .dialog .paths {
+.dialog-backdrop.playlist .dialog .sortLabel {
+  grid-area: sortLabel;
+}
+.dialog-backdrop.playlist .dialog .sort {
+  grid-area: sort;
+}
+.dialog-backdrop.playlist .dialog .items {
   grid-area: paths;
-  height: 200px;
   width: 500px;
+  border: 1px solid #aaa;
+  background-color: #ddd;
 }
-.dialog-backdrop.playlist .dialog .pathSelectLabel {
-  grid-area: file;
-  -webkit-appearance: button;
-  padding: 2px 4px;
-  box-sizing: border-box;
+.dialog-backdrop.playlist .dialog .items > .innerContainer {
+  max-height: 400px;
+  overflow: auto;
+}
+.dialog-backdrop.playlist .dialog .items > .innerContainer .item {
+  margin: 8px;
+  border: 1px solid #aaa;
+  background-color: #eee;
+  padding: 8px;
+}
+.dialog-backdrop.playlist .dialog .items > .innerContainer .item .innerContainer .label {
+  border: 1px solid #aaa;
+  border-bottom: 0;
+  height: 24px;
+  line-height: 24px;
+  width: 64px;
   text-align: center;
+  box-sizing: border-box;
+  float: left;
 }
-.dialog-backdrop.playlist .dialog .pathSelectLabel .pathSelect {
-  display: none;
+.dialog-backdrop.playlist .dialog .items > .innerContainer .item .innerContainer input {
+  border: 1px solid #aaa;
+  border-bottom: 0;
+  border-left: 0;
+  height: 24px;
+  box-sizing: border-box;
+  width: calc(100% - 64px);
+  margin: 0;
+  float: left;
+}
+.dialog-backdrop.playlist .dialog .items > .innerContainer .item .remove {
+  width: 100%;
+  padding: 4px 0;
+}
+.dialog-backdrop.playlist .dialog .items .addButtons {
+  text-align: right;
+  padding: 8px;
+}
+.dialog-backdrop.playlist .dialog .items .addButtons button {
+  margin-left: 8px;
 }
 .dialog-backdrop.playlist .dialog .ok {
   grid-area: ok;

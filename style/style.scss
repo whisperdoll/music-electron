@@ -203,12 +203,12 @@ canvas
             grid-template-areas:
                 "typeLabel type type type"
                 "nameLabel name name name"
+                "sortLabel sort sort sort"
                 "filterLabel filter filter filter"
                 "paths paths paths paths"
-                "file file file file"
                 "blank blank ok cancel";
             grid-template-columns: 50px auto 64px 64px;
-            grid-template-rows: auto auto auto auto auto auto;
+            grid-template-rows: auto auto auto auto auto;
             grid-gap: 6px;
 
             .typeLabel
@@ -241,24 +241,79 @@ canvas
                 grid-area: filter;
             }
 
-            .paths
+            .sortLabel
             {
-                grid-area: paths;
-                height: 200px;
-                width: 500px;
+                grid-area: sortLabel;
             }
 
-            .pathSelectLabel
+            .sort
             {
-                grid-area: file;
-                -webkit-appearance: button;
-                padding: 2px 4px;
-                box-sizing: border-box;
-                text-align: center;
+                grid-area: sort;
+            }
 
-                .pathSelect
+            .items
+            {
+                grid-area: paths;
+                width: 500px;
+                border: 1px solid #aaa;
+                background-color: #ddd;
+
+                & > .innerContainer
                 {
-                    display: none;
+                    max-height: 400px;
+                    overflow: auto;
+                    
+                    .item
+                    {
+                        margin: 8px;
+                        border: 1px solid #aaa;
+                        background-color: #eee;
+                        padding: 8px;
+
+                        .innerContainer
+                        {
+                            .label
+                            {
+                                border: 1px solid #aaa;
+                                border-bottom: 0;
+                                height: 24px;
+                                line-height: 24px;
+                                width: 64px;
+                                text-align: center;
+                                box-sizing: border-box;
+                                float: left;
+                            }
+    
+                            input
+                            {
+                                border: 1px solid #aaa;
+                                border-bottom: 0;
+                                border-left: 0;
+                                height: 24px;
+                                box-sizing: border-box;
+                                width: calc(100% - 64px);
+                                margin: 0;
+                                float: left;
+                            }
+                        }
+
+                        .remove
+                        {
+                            width: 100%;
+                            padding: 4px 0;
+                        }
+                    }
+                }
+
+                .addButtons
+                {
+                    text-align: right;
+                    padding: 8px;
+
+                    button
+                    {
+                        margin-left: 8px;
+                    }
                 }
             }
 

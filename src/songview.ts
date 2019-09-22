@@ -1,26 +1,28 @@
 import { Widget } from "./widget";
 import { Song } from "./song";
 import { createElement, fileExists } from "./util";
-import { PlaylistItem } from "./playlistitem";
 
-export class PlaylistItemWidget extends Widget
+export class SongView extends Widget
 {
-    private _item : PlaylistItem;
-
     private thumbnail : HTMLImageElement;
     private primaryLabel : HTMLElement;
     private secondaryLabel : HTMLElement;
     private static defaultThumbnailSrc = "img/default.png";
+    private _song : Song;
 
-    constructor(playlistItem : PlaylistItem)
+    constructor(song : Song)
     {
         super("song");
-        this._item = playlistItem;
 
-        this.createEvent("load");
         this.createEvent("dblclick");
         this.createEvent("rightclick");
         this.createEvent("mousedown");
+
+        this._song = song;
+        this.song.clearEvent("updatestate");
+        this.song.clearEvent("updatemetadata");
+        this.song.only("updatestate", () => this.updateState());
+        this.song.only("updatemetadata", () => this.updateMetadata());
 
         this.container.addEventListener("dblclick", (e) =>
         {
@@ -37,31 +39,26 @@ export class PlaylistItemWidget extends Widget
             this.emitEvent("mousedown", this, e);
         });
 
-        if (playlistItem.loaded)
-        {
-            this.construct();
-        }
-        else
-        {
-            playlistItem.on("load", () =>
-            {
-                this.construct();
-            });
-        }
+        this.construct();
     }
 
-    public get item() : PlaylistItem
+    public get song() : Song
     {
-        return this._item;
+        return this._song;
     }
 
-    public setNewItem(item : PlaylistItem)
+    public set song(song : Song)
     {
-        this._item = item;
-        this.updateContainer();
+        this.song && this.song.clearEvent("updatestate");
+        this.song && this.song.clearEvent("updatemetadata");
+        this._song = song;
+        this.song.only("updatestate", () => this.updateState());
+        this.song.only("updatemetadata", () => this.updateMetadata());
+        this.updateMetadata();
+        this.updateState();
     }
 
-    private construct() : void
+    public construct() : void
     {
         this.container.innerHTML = "";
         let frag = document.createDocumentFragment();
@@ -73,13 +70,13 @@ export class PlaylistItemWidget extends Widget
         this.thumbnail.addEventListener("load", () =>
         {
             this.thumbnail.style.opacity = "1";
-            this.emitEvent("load");
+            //this.emitEvent("load");
         });
         this.thumbnail.addEventListener("error", (err) =>
         {
             this.thumbnail.style.opacity = "1";
-            this.thumbnail.src = PlaylistItemWidget.defaultThumbnailSrc;
-            throw "uhh thum nail ? " + this.item.metadata.title;
+            this.thumbnail.src = SongView.defaultThumbnailSrc;
+            throw "uhh thum nail ? " + this.song.metadata.title;
         });
         // thumbnail loaded below //
         frag.appendChild(this.thumbnail);
@@ -104,30 +101,42 @@ export class PlaylistItemWidget extends Widget
         frag.appendChild(labels);
         //console.timeEnd("creating secondary label for " + this._filename);
 
-        this.updateContainer(); // takes care of loading thumbnail
+        this.updateMetadata(); // takes care of loading thumbnail
         this.container.appendChild(frag);
     }
 
-    public updateContainer()
+    public updateMetadata()
     {
-        if (this.item.metadata.picture)
+        if (this.song.metadata.picture)
         {
-            if (fileExists(this.item.metadata.picture))
+            if (fileExists(this.song.metadata.picture))
             {
-                this.thumbnail.src = this.item.metadata.picture;
+                this.thumbnail.src = this.song.metadata.picture;
             }
             else
             {
-                //this.item.retrieveMetadata(this.updateContainer.bind(this));
-                this.thumbnail.src = PlaylistItemWidget.defaultThumbnailSrc;
+                //this.song.retrieveMetadata(this.update.bind(this));
+                this.thumbnail.src = SongView.defaultThumbnailSrc;
             }
         }
         else
         {
-            this.thumbnail.src = PlaylistItemWidget.defaultThumbnailSrc;
+            this.thumbnail.src = SongView.defaultThumbnailSrc;
         }
         
-        this.primaryLabel.innerText = this.item.metadata.title;
-        this.secondaryLabel.innerText = this.item.metadata.artist + " — " + this.item.metadata.album;
+        this.primaryLabel.innerText = this.song.metadata.title;
+        this.secondaryLabel.innerText = this.song.metadata.artist + " — " + this.song.metadata.album;
+
+        if (this.song.metadata.track)
+        {
+            this.secondaryLabel.innerText += " [" + this.song.metadata.track.toString() + "]";
+        }
+    }
+
+    public updateState()
+    {
+        this.container.classList.toggle("selected", this.song.selected);
+        this.container.classList.toggle("skipping", this.song.skipping);
+        this.container.classList.toggle("playing", this.song.playing);
     }
 }

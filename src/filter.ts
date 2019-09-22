@@ -1,17 +1,23 @@
 import { Widget } from "./widget";
 import { emptyFn, createElement, array_remove, array_remove_at } from "./util";
 
+export interface FilterInfo
+{
+    appliedPart : string;
+    previewPart : string;
+}
+
 export class Filter extends Widget
 {
     private filters : string[] = [];
     private input : HTMLInputElement;
-    public onpreview : (filter : string) => void = emptyFn;
-    public onfilter : (filter : string) => void = emptyFn;
     private tagElements : HTMLElement[] = [];
 
     constructor(container : HTMLElement)
     {
         super(container);
+
+        this.createEvent("update");
 
         this.input = <HTMLInputElement>createElement("input", "filter");
         this.input.type = "text";
@@ -34,29 +40,39 @@ export class Filter extends Widget
         this.input.value = value;
     }
 
-    public get filter() : string
+    private get appliedPart() : string
     {
-        return this.filters.map(filter => '(' + filter + ')').join(" ");
+        if (this.filters.length === 0)
+        {
+            return "";
+        }
+        else
+        {
+            return this.filters.map(filter => '(' + filter + ')').join(" ").trim();
+        }
     }
 
-    public get previewFilter() : string
+    private get previewPart() : string
     {
-        return this.filter + " " + this.value;
+        return this.value.trim();
+    }
+
+    public get filterInfo() : FilterInfo
+    {
+        return {
+            appliedPart: this.appliedPart,
+            previewPart: this.previewPart
+        };
     }
 
     public addFilter(filter : string, customName? : string) : void
     {
         this.filters.push(filter);
         this.genTagElement(this.filters.length - 1, customName);
-        this.onfilter(this.filter);
-    
-        if (this.value !== "")
-        {
-            this.onpreview(this.previewFilter);
-        }
+        this.emitEvent("update");
     }
 
-    public removeFilter(filter : number | HTMLElement, silent : boolean = false) : void
+    public removeFilter(filter : number | HTMLElement, silent : boolean) : void
     {
         if (filter instanceof HTMLElement)
         {
@@ -72,17 +88,16 @@ export class Filter extends Widget
 
         if (!silent)
         {
-            this.onfilter(this.filter);
-            this.onpreview(this.previewFilter);
+            this.emitEvent("update");
         }
     }
 
-    public removeLastFilter(silent? : boolean) : void
+    public removeLastFilter(silent : boolean) : void
     {
         this.removeFilter(this.filters.length - 1, silent);
     }
 
-    public removeAllFilters(silent : boolean = false) : void
+    public removeAllFilters(silent : boolean) : void
     {
         while (this.filters.length > 0)
         {
@@ -91,12 +106,7 @@ export class Filter extends Widget
 
         if (!silent)
         {
-            this.onfilter(this.filter);
-
-            if (this.previewFilter !== this.filter)
-            {
-                this.onpreview(this.previewFilter);
-            }
+            this.emitEvent("update");
         }
     }
 
@@ -119,7 +129,7 @@ export class Filter extends Widget
 
         let r = createElement("div", "remove");
         r.innerText = "✕"
-        t.addEventListener("click", () => this.removeFilter(t));
+        t.addEventListener("click", () => this.removeFilter(t, false));
         t.appendChild(r);
         
         this.container.appendChild(t);
@@ -166,7 +176,7 @@ export class Filter extends Widget
 
     private inputFn() : void
     {
-        this.onpreview(this.previewFilter);
+        this.emitEvent("update");
     }
 
     private keypressFn(e : KeyboardEvent) : void
@@ -190,7 +200,7 @@ export class Filter extends Widget
             {
                 if (this.filters.length > 0)
                 {
-                    this.removeLastFilter();
+                    this.removeLastFilter(false);
                 }
             }
         }

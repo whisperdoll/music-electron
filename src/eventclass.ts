@@ -1,4 +1,4 @@
-import { array_remove, array_ensureOne } from "./util";
+import { array_remove, array_ensureOne, array_remove_all } from "./util";
 
 export class EventClass
 {
@@ -40,6 +40,21 @@ export class EventClass
         }
     }
 
+    public un(event : string, fn : Function)
+    {
+        if (!this.events.has(event))
+        {
+            throw "no such event: " + event;
+        }
+        
+        array_remove_all(this.events.get(event), fn);
+    }
+
+    public clearEvent(event : string)
+    {
+        this.events.set(event, []);
+    }
+
     public once(event : string, fn : Function)
     {
         let wrapperFn = () =>
@@ -49,5 +64,15 @@ export class EventClass
         };
 
         this.on(event, wrapperFn);
+    }
+
+    public only(event : string, fn : Function)
+    {
+        if (!this.events.has(event))
+        {
+            throw "no such event: " + event;
+        }
+
+        this.events.set(event, [ fn ]);
     }
 }

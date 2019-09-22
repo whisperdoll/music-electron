@@ -1,108 +1,70 @@
-import { endsWith, mergeSorted, array_copy, array_shuffle, SortFunction, array_swap, getUserDataPath, array_item_at, bigintStat, bigintStatSync, emptyFn, array_remove_multiple } from "./util";
+import { endsWith, mergeSorted, array_copy, array_shuffle, SortFunction, array_swap, getUserDataPath, array_item_at, bigintStat, bigintStatSync, emptyFn, array_remove_multiple, isFile, array_contains, numberArray, array_last, array_remove_at, array_remove, mod } from "./util";
 const dir = require("node-dir");
 import * as fs from "fs";
 import * as npath from "path";
 import { SafeWriter } from "./safewriter";
 import { EventClass } from "./eventclass";
-import { Metadata, PlaylistItem } from "./playlistitem";
-import { Song } from "./song";
-import { PlaylistData } from "./playlistdata";
+import { Song, Metadata } from "./song";
+import { PlaylistData, PlaylistPath } from "./playlistdata";
+import { FilterInfo } from "./filter";
 
 export class Playlist extends EventClass
 {
-    private static cacheFilename = npath.join(getUserDataPath(), "songs.cache");
-    private static cacheFid : string;
-    public static metadata : { [fid : string] : Metadata };
-
-    private noSort = (left : PlaylistItem, right : PlaylistItem) =>
+    private noSort = (left : Song, right : Song) =>
     {
-        let lindex = this.items.indexOf(left);
-        return lindex !== -1 && lindex < this.items.indexOf(right);
+        let lindex = this.songs.indexOf(left);
+        return lindex !== -1 && lindex < this.songs.indexOf(right);
     };
-    
-    public items : PlaylistItem[] = [];
+
     public static allowedExtensions : string[] =
     [
         "mp3",
         "m4a"
     ];
+    
+    public songs : Song[] = [];
+    private filterInfo : FilterInfo;
+    public filteredSongs : Song[] = [];
+    public visibleSongs : Song[] = [];
 
-    private permFilter : string = "";
-    private _filter : string = "";
-    private _previewFilter : string = "";
-    private _filteredItems : PlaylistItem[] = [];
-    private shuffledIndeces : number[] = [];
-    private shuffled : boolean = false;
-    private _defaultSortFn : SortFunction<PlaylistItem> = this.noSort;
-    private loadingAmount : number;
-    private loadedSoFar : number;
-    private _playlistData : PlaylistData;
     private songPathMap : Map<Song, string> = new Map<Song, string>();
-
-    private _sortFn : SortFunction<PlaylistItem> = this.defaultSortFn;
-
-    private _loading : boolean = false;
+    private _playlistData : PlaylistData;
     private _loaded : boolean = false;
-    private _loadCheck : boolean = false;
+    private _loading : boolean = false;
+    private shuffled : boolean = false;
+    private shuffledIndeces : number[];
+    private sortFn : SortFunction<Song> = this.noSort;
 
-    private _resetCallback : Function = null;
-    private savePlaylist : (playlist : PlaylistData) => void;
-
-    constructor(savePlaylistFn : (playlist : PlaylistData) => void)
+    constructor(private savePlaylistFn : (playlist : PlaylistData) => void)
     {
         super();
 
-        this.savePlaylist = savePlaylistFn;
-
         this.createEvent("loadstart");
         this.createEvent("load");
-        this.createEvent("change");
+        this.createEvent("loadchunk");
         this.createEvent("reset");
-
-        this.on("load", () =>
-        {
-            this._resetCallback && this._resetCallback();
-        });
-
-        if (!Playlist.metadata)
-        {
-            Playlist.loadMetadata();
-        }
-    }
-
-    public songParentPath(song : Song) : string
-    {
-        return this.songPathMap.get(song);
-    }
-
-    public get sortFn()
-    {
-        return this._sortFn;
-    }
-
-    public get filenames() : string[]
-    {
-        return this.items.map(item => item.getFilename());
+        this.createEvent("selectionchange");
+        this.createEvent("update");
     }
 
     public reset(callback : Function) : boolean
     {
-        if (this._loading)
-        {
-            this._resetCallback = callback;
-            return false;
-        }
-
-        this.items = [];
-        this._filter = "";
-        this._previewFilter = "";
-        this._filteredItems = [];
+        this.songs = [];
+        this.visibleSongs = [];
+        this.filteredSongs = [];
+        this.songPathMap.clear();
+        this._playlistData = null;
         this._loaded = false;
-        this._loading = false;
+        this.filterInfo = null;
         this.emitEvent("reset");
         callback();
-
         return true;
+    }
+
+    // returns undefined if song is not a child of path //
+    public songParentPath(song : Song) : string
+    {
+        return this.songPathMap.get(song);
     }
 
     public get playlistData() : PlaylistData
@@ -117,142 +79,120 @@ export class Playlist extends EventClass
 
     public loadPlaylist(playlistData : PlaylistData) : void
     {
+        let queue : PlaylistPath[] = [];
+
+        let loadSong = (playlistPath : PlaylistPath, addTo : Song[] = this.songs, callback? : (song : Song) => void) =>
+        {
+            let filename = playlistPath.path;
+            if (!playlistPath.exclude)
+            {
+                playlistPath.exclude = [];
+            }
+            if (this.filenameAllowed(filename) && !array_contains(playlistPath.exclude, filename))
+            {
+                let s = new Song(filename);
+                s.once("load", () =>
+                {
+                    if (s.matchesFilter(this.playlistData.filter) && s.matchesFilter(playlistPath.filter))
+                    {
+                        addTo.push(s);
+                    }
+                    
+                    if (callback)
+                    {
+                        callback && callback(s);
+                    }
+                    else
+                    {
+                        this.emitEvent("loadchunk");
+                    }
+                });
+                s.load();
+            }
+            else
+            {
+                if (callback)
+                {
+                    callback && callback(null);
+                }
+                else
+                {
+                    this.emitEvent("loadchunk");
+                }
+            }
+        };
+
+        let loadPath = (playlistPath : PlaylistPath) =>
+        {
+            let filenames : string[] = dir.files(playlistPath.path, { sync: true });
+            let counter = 0;
+            let toAdd : Song[] = [];
+
+            filenames.forEach((filename) =>
+            {
+                loadSong({ path: filename, filter: playlistPath.filter, exclude: playlistPath.exclude }, toAdd, (song) =>
+                {
+                    counter++;
+                    song && this.songPathMap.set(song, playlistPath.path);
+                    if (counter === filenames.length)
+                    {
+                        if (playlistPath.sort)
+                        {
+                            toAdd = mergeSorted(toAdd, this.getSortFunctionByCriteria(playlistPath.sort.split(",")));
+                        }
+
+                        this.songs.push(...toAdd);
+                        this.emitEvent("loadchunk");
+                    }
+                });
+            });
+        };
+
+        let done = () =>
+        {
+            this._loading = false;
+            this._loaded = true;
+            if (this.playlistData.sort)
+            {
+                let sortStrings : string[] = this.playlistData.sort.split(",");
+                this.songs = mergeSorted(this.songs, this.getSortFunctionByCriteria(sortStrings));
+            }
+            this.filter({ appliedPart: "", previewPart: "" }, false); // initalize filtered songlists
+            this.emitEvent("load");
+            console.timeEnd("loading playlist " + this.playlistData.name);
+        };
+
+        let loadFn = () =>
+        {
+            if (queue.length === 0)
+            {
+                done();
+                return;
+            }
+
+            let playlistPath = queue.shift();
+            if (isFile(playlistPath.path))
+            {
+                loadSong(playlistPath);
+            }
+            else
+            {
+                loadPath(playlistPath);
+            }
+        };
+
         this.reset(() =>
         {
             console.time("loading playlist " + playlistData.name);
             this._loading = true;
-            this._loadCheck = true;
-            this.loadingAmount = 0;
-            this.loadedSoFar = 0;
             this._playlistData = playlistData;
             this.emitEvent("loadstart");
 
-            playlistData.paths.forEach(path =>
-            {
-                try
-                {
-                    let stats = fs.statSync(path);
-                    if (stats.isFile())
-                    {
-                        this.loadSong(path);
-                    }
-                    else
-                    {
-                        this.loadPath(path);
-                    }
-                }
-                catch (err)
-                {
-                    throw err;
-                }
-            });
+            queue = array_copy(playlistData.paths);
 
-            this._loadCheck = false;
-
-            // check if they were all sync //
-            this.loadedSoFar--;
-            this.progressLoading();
+            this.only("loadchunk", loadFn);
+            loadFn();
         });
-    }
-
-    private progressLoading() : void
-    {
-        this.loadedSoFar++;
-        if (this.loadedSoFar === this.loadingAmount && !this._loadCheck)
-        {
-            this._loading = false;
-            this._loaded = true;
-            this.permFilter = this.playlistData.filter;
-            this.filter(this.permFilter, false);
-            this._defaultSortFn = this.sortFn;
-            this.emitEvent("load");
-            console.timeEnd("loading playlist " + this.playlistData.name);
-        }
-    }
-
-    // need to handle internal sorting of paths //
-
-    private loadSong(filename : string) : Song
-    {
-        if (this.filenameAllowed(filename))
-        {
-            this.loadingAmount++;
-            let s = new Song(filename);
-            s.once("load", () =>
-            {
-                if (s.matchesFilter(this.permFilter))
-                {
-                    this.items.push(s);
-                }
-
-                this.progressLoading();
-            });
-            s.load();
-            return s;
-        }
-
-        return null;
-    }
-
-    private loadPath(path : string)
-    {
-        try
-        {
-            console.time("loading path " + path);
-            let filenames : string[] = dir.files(path, { sync: true });
-            filenames.forEach(filename => 
-            {
-                let s : Song;
-                if (s = this.loadSong(filename))
-                {
-                    this.songPathMap.set(s, path);
-                }
-            });
-            console.timeEnd("loading path " + path);
-        }
-        catch (err)
-        {
-            throw err;
-        }
-    }
-
-    private static loadMetadata() : void
-    {
-        let data;
-
-        try
-        {
-            data = fs.readFileSync(this.cacheFilename, "utf8");
-        }
-        catch (err)
-        {
-            if (err.code === "ENOENT")
-            {
-                data = JSON.stringify({});
-                fs.writeFileSync(this.cacheFilename, data, "utf8");
-            }
-            else
-            {
-                throw err;
-            }
-        }
-
-        this.metadata = JSON.parse(data);
-        
-        bigintStat(this.cacheFilename, (err, stat) =>
-        {
-            if (err)
-            {
-                throw err;
-            }
-
-            this.cacheFid = stat.ino.toString();
-        }); 
-    }
-
-    private get defaultSortFn() : SortFunction<PlaylistItem>
-    {
-        return this._defaultSortFn;
     }
 
     public get loaded() : boolean
@@ -260,164 +200,38 @@ export class Playlist extends EventClass
         return this._loaded;
     }
 
-    public removeSongs(songs : Song[]) : void
+    public get filenames() : string[]
     {
-        array_remove_multiple(this.items, songs);
-        array_remove_multiple(this.playlistData.paths, songs.map(song => song.filename));
-        this.savePlaylist(this.playlistData);
+        return this.songs.map(song => song.filename);
     }
 
-    public shuffle() : void
+    public filter(filterInfo : FilterInfo, shouldUpdate : boolean = true, force : boolean = false) : void
     {
-        this.shuffledIndeces = this.items.map((item, i) => i);
-        array_shuffle(this.shuffledIndeces);
-        this.shuffled = true;
-    }
-
-    public unshuffle() : void
-    {
-        this.shuffled = false;
-    }
-
-    public sort(sortFn? : (a : PlaylistItem, b : PlaylistItem) => boolean, rerender : boolean = true)
-    {
-        if (sortFn)
+        if (force || !this.filterInfo || filterInfo.appliedPart !== this.filterInfo.appliedPart)
         {
-            //console.log("apple", sortFn);
-            this._sortFn = sortFn;
+            // only apply filter if it's different from the last one //
+            this.filteredSongs = this.songs.filter(song => song.matchesFilter(filterInfo.appliedPart));
+        }
+        
+        if (force || !this.filterInfo || (filterInfo.previewPart !== this.filterInfo.previewPart && filterInfo.appliedPart === this.filterInfo.appliedPart) || filterInfo.appliedPart !== this.filterInfo.appliedPart)
+        {
+            // only apply preview if different from last one and the applied part is the same //
+            // (cuz applied part changing would change the pool that preview draws from) //
+            this.visibleSongs = this.filteredSongs.filter(song => song.matchesFilter(filterInfo.previewPart));
         }
 
-        this.items = this.getSorted(this.items, this.sortFn);
-        this._filteredItems = this.getSorted(this.filteredItems, this.sortFn);
-        rerender && this.emitEvent("change");
+        this.filterInfo = filterInfo;
+        shouldUpdate && this.emitEvent("update");
     }
 
-    public filter(filter : string, rerender : boolean = true) : void
+    private getSortFunctionByCriteria(sortStrings : string[]) : SortFunction<Song>
     {
-        filter = filter.toLowerCase();
-        filter = this.sortFromFilter(filter, false);
-        //console.log("got back: " + filter);
-        this._filter = filter;
-        this._previewFilter = null;
-        this._filteredItems = this.getFilterList(filter);
-        rerender && this.emitEvent("change");
-    }
-
-    // returns filter without sorting info //
-    private sortFromFilter(filter : string, rerender : boolean = true) : string
-    {
-        filter = filter.toLowerCase();
-        //console.log("sorting from filter: " + filter);
-        let q = false;
-        let pcounter = 0;
-        let didASort = 0;
-
-        for (let i = 0; i < filter.length; i++)
-        {
-            if (filter[i] === '"')
-            {
-                q = !q;
-                continue;
-            }
-            if (filter[i] === "(")
-            {
-                pcounter++;
-                continue;
-            }
-            if (filter[i] === ")" && pcounter > 0)
-            {
-                pcounter--;
-                continue;
-            }
-
-            if (!q)
-            {
-                if (filter.substr(i, 5) === "sort:")
-                {
-                    let ss = filter.substr(i + 5);
-                    let is = ss.indexOf(" ");
-                    let ic = ss.indexOf(":");
-                    let ip = ss.indexOf(")");
-
-                    //console.log(pcounter > 0, ip !== -1, (ip < is || is === -1));
-
-                    if (pcounter > 0 && ip !== -1 && (ip < is || is === -1))
-                    {
-                        //console.log("tennis");
-                        is = ip;
-                    }
-
-                    if ((is !== -1 && ic !== -1 && is < ic) || ic === -1 || (is === -1 && ic === -1))
-                    {
-                        // just critera //
-                        if (is === -1)
-                        {
-                            is = ss.length;
-                        }
-
-                        let criteria = ss.substr(0, is);
-                        didASort |= +this.sortByCriteria(criteria, undefined, rerender);
-
-                        let left = filter.substr(0, i);
-                        let right = filter.substr(i + 5 + is);
-                        filter = left + right;
-                        i = -1;
-                    }
-                    else if ((is !== -1 && ic !== -1 && ic < is) || is === -1)
-                    {
-                        // criteria and order //
-                        if (is === -1)
-                        {
-                            is = ss.length;
-                        }
-
-                        let criteria = ss.substr(0, ic);
-                        let order = ss.substr(ic + 1);
-                        if (order.indexOf(" ") !== -1)
-                        {
-                            order = order.substr(0, order.indexOf(" "));
-                        }
-
-                        didASort |= +this.sortByCriteria(criteria, order, rerender);
-
-                        let left = filter.substr(0, i);
-                        let right = filter.substr(i + 5 + is);
-                        filter = left + right;
-                        i = -1;
-                    }
-                }
-            }
-        }
-
-        if (!didASort && this.sortFn !== this.defaultSortFn)
-        {
-            this.sort(this.defaultSortFn, rerender);
-        }
-
-        return filter;
-    }
-
-    private sortByCriteria(criteria : string, order? : string, rerender : boolean = true) : boolean
-    {
-        let sortFn = this.getSortFunctionByCriteria(criteria, order);
-
-        if (sortFn)
-        {
-            this.sort(sortFn, rerender);
-            return true;
-        }
-
-        return false;
-    }
-
-    private getSortFunctionByCriteria(criteria : string, order : string = "asc") : SortFunction<Song>
-    {
-        let criteriaArray = criteria.split(",");
-        return (a : PlaylistItem, b : PlaylistItem) =>
+        return (a : Song, b : Song) =>
         {    
-            for (let i = 0; i < criteriaArray.length; i++)
+            for (let i = 0; i < sortStrings.length; i++)
             {
-                let criterium = criteriaArray[i];
+                let criterium = sortStrings[i].split(":")[0];
+                let order = sortStrings[i].split(":")[1] || "a";
                 let pa = a.getProperty(criterium);
                 let pb = b.getProperty(criterium);
 
@@ -435,174 +249,16 @@ export class Playlist extends EventClass
         };
     }
 
-    public previewFilter(filter : string, applyOnlyToCurrentFilter : boolean = false, rerender : boolean = true) : void
+    public shuffle() : void
     {
-        filter = filter.toLowerCase();
-        this._previewFilter = filter;
-        rerender && this.emitEvent("change");
+        this.shuffledIndeces = numberArray(0, this.songs.length);
+        array_shuffle(this.shuffledIndeces);
+        this.shuffled = true;
     }
 
-    public get filteredItems() : PlaylistItem[]
+    public unshuffle() : void
     {
-        return this._filteredItems;
-    }
-
-    public findSongByFid(fid : string) : PlaylistItem
-    {
-        return this.items.find(item => item.hasFid(fid)) || null;
-    }
-
-    public findSongByFilename(filename : string) : PlaylistItem
-    {
-        return this.items.filter(item => item.hasFilename(filename))[0] || null;
-    }
-
-    public itemAfter(item : PlaylistItem) : PlaylistItem
-    {
-        let index = this.filteredItems.indexOf(item);
-
-        if (this.filteredItems.length === 0)
-        {
-            return null;
-        }
-        else if (index === -1)
-        {
-            index = 0;
-        }
-
-        if (this.shuffled)
-        {
-            let _index = this.shuffledIndeces.indexOf(index);
-            return this.filteredItems[array_item_at(this.shuffledIndeces, _index + 1)];
-        }
-        else
-        {
-            return array_item_at(this.filteredItems, index + 1);
-        }
-    }
-
-    public itemBefore(item : PlaylistItem) : PlaylistItem
-    {
-        let index = this.filteredItems.indexOf(item);
-
-        if (this.filteredItems.length === 0)
-        {
-            return null;
-        }
-        else if (index === -1)
-        {
-            return this.filteredItems[0];
-        }
-
-        if (this.shuffled)
-        {
-            let _index = this.shuffledIndeces.indexOf(index);
-
-            if (_index === 0)
-            {
-                return this.filteredItems[this.shuffledIndeces[this.shuffledIndeces.length - 1]];
-            }
-            else
-            {
-                return this.filteredItems[this.shuffledIndeces[_index - 1]];
-            }
-        }
-        else
-        {
-            if (index === 0)
-            {
-                return this.filteredItems[this.filteredItems.length - 1];
-            }
-            else
-            {
-                return this.filteredItems[index - 1];
-            }
-        }
-    }
-
-    public moveItem(item : PlaylistItem, amount : number) : boolean
-    {
-        if (amount === 0) return true;
-
-        while (amount > 0)
-        {
-            let index = this.filteredItems.indexOf(item);
-            let next = this.filteredItems[index + 1];
-
-            if (!next)
-            {
-                return false;
-            }
-            else
-            {
-                array_swap(this.filteredItems, index, index + 1);
-                array_swap(this.items, item, next);
-            }
-
-            amount--;
-        }
-
-        while (amount < 0)
-        {
-            let index = this.filteredItems.indexOf(item);
-            let prev = this.filteredItems[index - 1];
-
-            if (!prev)
-            {
-                return false;
-            }
-            else
-            {
-                array_swap(this.filteredItems, index, index - 1);
-                array_swap(this.items, item, prev);
-            }
-
-            amount++;
-        }
-
-        this.emitEvent("change");
-        return true;
-    }
-
-    public getRenderList() : PlaylistItem[]
-    {
-        if (this._previewFilter)
-        {
-            console.log(this._filter + " " + this._previewFilter);
-            return this.getFilterList(this._filter + " " + this._previewFilter);
-        }
-        else
-        {
-            return array_copy(this.filteredItems);
-        }
-    }
-
-    private getFilterList(filter : string, fromArray? : PlaylistItem[]) : PlaylistItem[]
-    {
-        if (!fromArray)
-        {
-            fromArray = this.items;
-        }
-
-        filter = filter.toLowerCase().replace(/\(\)/g, "");
-
-        if (filter === "")
-        {
-            return array_copy(fromArray);
-        }
-
-        return fromArray.filter(song => song.matchesFilter(filter));
-    }
-
-    public static writeCache(cb? : (err : Error) => void) : void
-    {
-        SafeWriter.write(this.cacheFilename, JSON.stringify(this.metadata), cb, this.cacheFid);
-    }
-
-    private getSorted(items : PlaylistItem[], sortFn? : SortFunction<PlaylistItem>) : PlaylistItem[]
-    {
-        //console.log("aaaa", sortFn || this.sortFn);
-        return mergeSorted(items, sortFn || this.sortFn);
+        this.shuffled = false;
     }
 
     private filenameAllowed(filename : string) : boolean
@@ -615,5 +271,234 @@ export class Playlist extends EventClass
         }
 
         return ret;
+    }
+
+    public get currentSelection() : Song[]
+    {
+        return this.songs.filter(song => song.selected);
+    }
+
+    public select(songs : Song[], removeOthers : boolean) : void
+    {
+        removeOthers && this.deselectAll();
+        songs.forEach(song => song.selected = true);
+        this.emitEvent("selectionchange");
+    }
+
+    public selectAll() : void
+    {
+        this.select(this.songs, false);
+    }
+
+    public deselect(songs : Song[]) : void
+    {
+        songs.forEach(song => song.selected = false);
+        this.emitEvent("selectionchange");
+    }
+
+    public deselectAll() : void
+    {
+        this.deselect(this.songs);
+    }
+
+    public selectRange(song1 : Song, song2: Song, removeOthers : boolean) : void
+    {
+        let sort = this.sortFn(song1, song2);
+        let firstSong : Song, lastSong : Song;
+
+        if (sort)
+        {
+            firstSong = song1;
+            lastSong = song2;
+        }
+        else
+        {
+            firstSong = song2;
+            lastSong = song1;
+        }
+
+        let firstIndex = this.visibleSongs.indexOf(firstSong);
+        let lastIndex = this.visibleSongs.indexOf(lastSong);
+
+        let toAdd = this.visibleSongs.slice(firstIndex, lastIndex + 1);
+        this.select(toAdd, removeOthers);
+    }
+
+    // returns the closest selected song to the passed song //
+    public closestSelectedTo(song : Song)
+    {
+        let getDist = (song1 : Song, song2 : Song) =>
+        {
+            return Math.abs(this.visibleSongs.indexOf(song1) - this.visibleSongs.indexOf(song2));
+        };
+        
+        let currentSelection = this.currentSelection;
+
+        let closest : Song = currentSelection[0];
+        let closestDist = getDist(closest, song);
+
+        for (let i = 1; i < currentSelection.length; i++)
+        {
+            let dist = getDist(currentSelection[i], song);
+            if (dist < closestDist)
+            {
+                closest = currentSelection[i];
+                closestDist = dist;
+            }
+        }
+
+        return closest;
+    }
+
+    // select from current selection to passed song //
+    public selectTo(song : Song, removeOthers : boolean)
+    {
+        let currentSelection = this.currentSelection;
+
+        if (currentSelection.length === 0)
+        {
+            this.selectRange(song, this.visibleSongs[0], removeOthers);
+        }
+        else if (this.currentSelection.length === 1)
+        {
+            this.selectRange(song, currentSelection[0], removeOthers);
+        }
+        else
+        {
+            let closest = this.closestSelectedTo(song);
+            this.selectRange(song, closest, removeOthers);
+        }
+    }
+
+    public shiftSelection(amount : number)
+    {
+        let newSongs : Song[] = [];
+
+        let currentSelection = this.currentSelection;
+
+        currentSelection.forEach((song) =>
+        {
+            newSongs.push(this.visibleSongs[this.visibleSongs.indexOf(song) + amount]);
+        });
+        
+        this.deselect(currentSelection);
+        this.select(newSongs, false);
+    }
+
+    public toggleSelect(song : Song) : void
+    {
+        song.selected = !song.selected;
+    }
+
+    public removeSongs(songs : Song[]) : void
+    {
+        songs.forEach((song) =>
+        {
+            let parentPath : string;
+
+            if (parentPath = this.songParentPath(song))
+            {
+                // exclude from path //
+                this.playlistData.paths.find(pathInfo => pathInfo.path === parentPath).exclude.push(song.filename);
+            }
+            else
+            {
+                // remove from playlist
+                let pathInfo = this.playlistData.paths.find(pathInfo => pathInfo.path === song.filename);
+                array_remove(this.playlistData.paths, pathInfo);
+            }
+        });
+
+        this.savePlaylistFn(this.playlistData);
+
+        array_remove_multiple(this.songs, songs);
+        array_remove_multiple(this.filteredSongs, songs);
+        array_remove_multiple(this.visibleSongs, songs);
+        this.emitEvent("update");
+    }
+
+    public removeSelected() : void
+    {
+        this.removeSongs(this.currentSelection);
+    }
+
+    public songAfter(song : Song) : Song
+    {
+        let index = this.filteredSongs.indexOf(song);
+
+        if (this.filteredSongs.length === 0)
+        {
+            return null;
+        }
+        else if (index === -1)
+        {
+            index = 0;
+        }
+
+        if (this.shuffled)
+        {
+            let _index = this.shuffledIndeces.indexOf(index);
+            return this.filteredSongs[array_item_at(this.shuffledIndeces, _index + 1)];
+        }
+        else
+        {
+            return array_item_at(this.filteredSongs, index + 1);
+        }
+    }
+
+    public songBefore(song : Song) : Song
+    {
+        let index = this.filteredSongs.indexOf(song);
+
+        if (this.filteredSongs.length === 0)
+        {
+            return null;
+        }
+        else if (index === -1)
+        {
+            return this.filteredSongs[0];
+        }
+
+        if (this.shuffled)
+        {
+            let _index = this.shuffledIndeces.indexOf(index);
+
+            if (_index === 0)
+            {
+                return this.filteredSongs[this.shuffledIndeces[this.shuffledIndeces.length - 1]];
+            }
+            else
+            {
+                return this.filteredSongs[this.shuffledIndeces[_index - 1]];
+            }
+        }
+        else
+        {
+            if (index === 0)
+            {
+                return this.filteredSongs[this.filteredSongs.length - 1];
+            }
+            else
+            {
+                return this.filteredSongs[index - 1];
+            }
+        }
+    }
+
+    public moveSongs(songs : Song[], direction : number)
+    {
+        songs = mergeSorted(songs, (l, r) => this.visibleSongs.indexOf(l) > this.visibleSongs.indexOf(r));
+
+        for (let i = songs.length - 1; i >= 0; i--)
+        {
+            // swap song for the one after it //
+            let songIndex = this.songs.indexOf(songs[i]);
+            let swapIndex = mod(this.songs.indexOf(songs[i]) + direction, this.songs.length);
+            let swapSong = this.songs[swapIndex];
+            this.songs[swapIndex] = songs[i];
+            this.songs[songIndex] = swapSong;
+        }
+
+        this.filter(this.filterInfo, true, true);
     }
 }

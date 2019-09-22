@@ -10,17 +10,20 @@ import { ContextMenu, ContextMenuItem } from "./contextmenu";
 import { RenameDialog } from "./renamedialog";
 import { Spectrum } from "./spectrum";
 import { InputDialog } from "./inputdialog";
-import { PlaylistWidget } from "./playlistwidget";
-import { PlaylistItemWidget } from "./playlistitemwidget";
+import { PlaylistView } from "./playlistview";
 import { Sidebar } from "./sidebar";
 import { PlaylistData } from "./playlistdata";
 import { StatusBar } from "./statusbar";
 import { PlaylistDialog } from "./playlistdialog";
+import { SongView } from "./songview";
+import { FileCache } from "./filecache";
+import * as fs from "fs";
 
 export class MainPlayer extends Widget
 {
     private filter : Filter;
-    private playlistWidget : PlaylistWidget;
+    private playlist : Playlist;
+    private playlistView : PlaylistView;
     private player : Player;
     private bottomBar : BottomBar;
     private statusBar : StatusBar;
@@ -30,27 +33,30 @@ export class MainPlayer extends Widget
     private renameDialog : RenameDialog;
     private spectrum : Spectrum;
 
-    private currentlyPlaying : PlaylistItemWidget;
+    private currentlyPlaying : Song;
     private songCountSwitch : boolean = false;
 
     private backgroundOverlay : HTMLElement;
     private backgroundPicture : HTMLElement;
     private loadingElement : HTMLImageElement;
 
-    private skipOnceSongs : PlaylistItemWidget[] = [];
+    private skipOnceSongs : Song[] = [];
 
     constructor(container : HTMLElement)
     {
         super(container);
 
+        FileCache.loadMetadata();
+
         this.bottomBar = new BottomBar(createElement("div", "bottomPanel"));
-        this.statusBar = new StatusBar(this.playlistWidget);
         this.filter = new Filter(createElement("div", "filter-container"));
         this.player = new Player(this.bottomBar.wavebar);
         this.spectrum = new Spectrum();
         this.sidebar = new Sidebar(createElement("div", "sidebar"), this.container);
-        this.playlistWidget = new PlaylistWidget(this.sidebar.savePlaylist.bind(this.sidebar), createElement("div", "songList"));
+        this.playlist = new Playlist(this.sidebar.savePlaylist.bind(this.sidebar));
 
+        this.playlistView = new PlaylistView(this.playlist);
+        this.statusBar = new StatusBar(this.playlistView);
 
         this.renameDialog = new RenameDialog(((err : NodeJS.ErrnoException) =>
         {
@@ -65,47 +71,48 @@ export class MainPlayer extends Widget
 
         // construct main context menu //
 
-        let playlistLoadedCondition = () => this.playlistWidget.playlist.loaded;
-        let itemSelectedCondition = () => this.playlistWidget.currentSelection.length > 0;
-        let songSelectedCondition = () => itemSelectedCondition() && this.playlistWidget.currentSelectionItems.every(item => item instanceof Song);
-        let songIsPartOfPathCondition = () => this.playlistWidget.currentSelectionItems.every(item => !!this.playlistWidget.playlist.songParentPath(<Song>item));
-        let songIsAloneCondition = () => this.playlistWidget.currentSelectionItems.every(item => !this.playlistWidget.playlist.songParentPath(<Song>item));
+        let playlistLoadedCondition = () => this.playlist.loaded;
+        let songSelectedCondition = () => this.playlist.currentSelection.length > 0;
+        let songIsPartOfPathCondition = () => this.playlist.currentSelection.every(song => !!this.playlist.songParentPath(song));
+        let songIsAloneCondition = () => this.playlist.currentSelection.every(song => !this.playlist.songParentPath(song));
+        let songsAreSameAlbumCondition = () => this.playlist.currentSelection.length > 0 && this.playlist.currentSelection.every(song => song.metadata.album === this.playlist.currentSelection[0].metadata.album);
 
         this.songMenu = new ContextMenu();
         this.songMenu.addItem(new ContextMenuItem("Rename...", this.promptRename.bind(this), songSelectedCondition));
         //this.songMenu.addItem(new ContextMenuItem("Edit rules...", this.editRules.bind(this)));
         this.songMenu.addItem(new ContextMenuItem("Reveal in explorer", this.revealInExplorer.bind(this), songSelectedCondition));
-        this.songMenu.addItem(new ContextMenuItem("Skip once", this.skipSongOnce.bind(this), itemSelectedCondition));
-        this.songMenu.addItem(new ContextMenuItem("Remove Song", this.removeSelectedSongs.bind(this), songIsAloneCondition));
+        this.songMenu.addItem(new ContextMenuItem("Make Most Recent", this.makeMostRecent.bind(this), songSelectedCondition));
+        this.songMenu.addItem(new ContextMenuItem("Consolidate Modified Times", this.consolidateModifiedTimes.bind(this), songsAreSameAlbumCondition));
+        this.songMenu.addItem(new ContextMenuItem("Refresh Metadata", this.refreshMetadata.bind(this), songSelectedCondition));
+        this.songMenu.addItem(new ContextMenuItem("Skip once", this.skipSongOnce.bind(this), songSelectedCondition));
+        this.songMenu.addItem(new ContextMenuItem("Remove", this.removeSelectedSongs.bind(this), songSelectedCondition));
 
         this.playlistMenu = new ContextMenu();
-        let playListItem = new ContextMenuItem("Add to playlist", undefined, itemSelectedCondition);
+        let playListItem = new ContextMenuItem("Add to playlist", undefined, songSelectedCondition);
         playListItem.subMenu = this.playlistMenu;
         this.songMenu.addItem(playListItem);
-        this.sidebar.on("playlistschange", (playlists : PlaylistData[]) =>
+        this.sidebar.on("playlistschange", (playlistDatas : PlaylistData[]) =>
         {
             this.playlistMenu.clear();
 
-            playlists.forEach(playlist =>
+            playlistDatas.forEach(playlistData =>
             {
                     let menuItem = new ContextMenuItem(
-                        playlist.name,
+                        playlistData.name,
                         () =>
                         {
-                            playlist.paths.push(...this.playlistWidget.currentSelection.map(itemWidget => itemWidget.item.getFilename()));
-                            this.sidebar.savePlaylist(playlist);
+                            playlistData.paths.push(...this.playlist.currentSelection.map(song => { return { path: song.filename }; }));
+                            this.sidebar.savePlaylist(playlistData);
                         },
                         () =>
                         {
-                            return playlist !== this.playlistWidget.playlistData
+                            return playlistData !== this.playlist.playlistData
                         }
                     );
 
                     this.playlistMenu.addItem(menuItem);
             });
         });
-        
-        this.songMenu.addItem(new ContextMenuItem("Remove from playlist", this.removeFromPlaylist.bind(this), itemSelectedCondition));
 
         // init ui //
 
@@ -120,7 +127,7 @@ export class MainPlayer extends Widget
             this.backgroundPicture,
             this.backgroundOverlay,
             this.filter,
-            this.playlistWidget,
+            this.playlistView,
             this.bottomBar,
             this.statusBar,
             this.sidebar,
@@ -131,7 +138,7 @@ export class MainPlayer extends Widget
             this.renameDialog
         );
 
-        this.playlistWidget.container.setAttribute("tabIndex", "0");
+        this.playlistView.container.setAttribute("tabIndex", "0");
 
         let ipcRenderer = require("electron").ipcRenderer;
         ipcRenderer.on("app-command", this.processAppCommand.bind(this));
@@ -146,40 +153,40 @@ export class MainPlayer extends Widget
     {
         //console.time("all loaded");
 
-        /*this.playlistWidget.loadFromPath("D:\\Google Drive\\Music", () =>
+        /*this.playlist.loadFromPath("D:\\Google Drive\\Music", () =>
         {
             //console.timeEnd("all loaded");
         
             this.loadingElement.style.display = "none";
         });*/
 
-        this.playlistWidget.on("loadstart", () =>
+        this.playlist.on("loadstart", () =>
         {
             showElement(this.loadingElement);
         });
 
-        this.playlistWidget.on("reset", () =>
+        this.playlist.on("reset", () =>
         {
             this.stopSong();
         });
 
-        this.playlistWidget.on("construct", () =>
+        this.playlist.on("load", () =>
         {
             hideElement(this.loadingElement);
             this.stopSong();
         });
 
-        this.playlistWidget.on("dblclickitem", (item : PlaylistItemWidget, e : MouseEvent) =>
+        this.playlistView.on("dblclicksong", (songView : SongView, e : MouseEvent) =>
         {
-            this.playItem(item, true);
+            this.playSong(songView.song, true);
         });
 
-        this.playlistWidget.on("rightclick", (e : MouseEvent) =>
+        this.playlistView.on("rightclick", (e : MouseEvent) =>
         {
             this.songMenu.show(e.clientX + 1, e.clientY + 1);
         });
 
-        this.playlistWidget.container.addEventListener("keypress", e =>
+        this.playlistView.container.addEventListener("keypress", e =>
         {
             if (e.which === 13) // enter
             {
@@ -189,27 +196,6 @@ export class MainPlayer extends Widget
             {
                 this.filter.value = "";
                 this.filter.container.focus();
-            }
-        });
-
-        this.playlistWidget.container.addEventListener("keydown", e =>
-        {
-            if (this.playlistWidget.currentSelection.length === 0)
-            {
-                return;
-            }
-
-            if (e.which === 38) // up
-            {
-                e.preventDefault();
-                this.playlistWidget.shiftSelection(-1);
-                element_scrollIntoViewIfNeeded(this.playlistWidget.currentSelection[0].container, "top", false);
-            }
-            else if (e.which === 40) // down
-            {
-                e.preventDefault();
-                this.playlistWidget.shiftSelection(1);
-                element_scrollIntoViewIfNeeded(array_last(this.playlistWidget.currentSelection).container, "bottom", false);
             }
         });
 
@@ -226,21 +212,15 @@ export class MainPlayer extends Widget
         this.player.on("listencount", () =>
         {
             // console.log("i'm dying");
-            this.currentlyPlaying.item.metadata.plays++;
-            Playlist.writeCache();
+            this.currentlyPlaying.metadata.plays++;
+            FileCache.writeCache();
         });
 
-        this.filter.onpreview = (filter) =>
+        this.filter.on("update", () =>
         {
             // console.log("preview: " + filter);
-            this.playlistWidget.playlist.previewFilter(filter, true);
-        };
-
-        this.filter.onfilter = (filter) =>
-        {
-            //console.log("filter: " + filter);
-            this.playlistWidget.playlist.filter(filter);
-        };
+            this.playlist.filter(this.filter.filterInfo, true);
+        });
 
         this.bottomBar.hookPlayer(this.player);
 
@@ -251,7 +231,7 @@ export class MainPlayer extends Widget
                 return this.playSelected();
             }
 
-            let success = this.playItem(this.currentlyPlaying);
+            let success = this.playSong(this.currentlyPlaying);
             return success;
         };
 
@@ -277,44 +257,82 @@ export class MainPlayer extends Widget
 
         this.bottomBar.on("shuffleon", () =>
         {
-            this.playlistWidget.playlist.shuffle();
+            this.playlist.shuffle();
         });
 
         this.bottomBar.on("shuffleoff", () =>
         {
-            this.playlistWidget.playlist.unshuffle();
+            this.playlist.unshuffle();
         });
 
         this.sidebar.on("playlistselect", (playlistData : PlaylistData) =>
         {
-            this.playlistWidget.loadPlaylist(playlistData);
+            this.playlist.loadPlaylist(playlistData);
         });
     }
 
     /*private showPlaylists() : void
     {
         this.playlists.show();
-        this.playlistWidget.container.style.width = "calc(100% - " + this.playlists.container.getBoundingClientRect().width + "px)";
+        this.playlist.container.style.width = "calc(100% - " + this.playlists.container.getBoundingClientRect().width + "px)";
     }
 
     private hidePlaylists() : void
     {
         this.playlists.hide();
-        this.playlistWidget.container.style.width = "100%";
+        this.playlist.container.style.width = "100%";
     }*/
+
+    private makeMostRecent() : void
+    {
+        let newMTime : Date = new Date();
+
+        this.playlist.currentSelection.forEach((song) =>
+        {
+            fs.utimesSync(song.filename, song.stats.atime, newMTime);
+        });
+
+        this.playlist.reload();
+    }
+
+    private refreshMetadata() : void
+    {
+        this.playlist.currentSelection.forEach((song) =>
+        {
+            song.refreshMetadata();
+        });
+    }
+
+    private consolidateModifiedTimes() : void
+    {
+        let newMTime = this.playlist.currentSelection[0].stats.mtime;
+
+        this.playlist.currentSelection.forEach((song) =>
+        {
+            fs.utimesSync(song.filename, song.stats.atime, newMTime);
+        });
+
+        // scrolltop doesnt get reset on reload so commenting this out
+        /*let scrollTop = this.playlistView.container.scrollTop;
+        this.playlistView.once("construct", () =>
+        {
+            this.playlistView.container.scrollTop = scrollTop;
+        });*/
+        this.playlist.reload();
+    }
 
     private removeSelectedSongs() : void
     {
-        this.playlistWidget.removeSelected();
+        this.playlist.removeSelected();
     }
 
     private promptRename() : void
     {
         // console.log("hey- o!!!");
-        if (this.playlistWidget.currentSelection.length > 0)
+        if (this.playlist.currentSelection.length > 0)
         {
             // console.log("hHELP!!");
-            this.renameDialog.show(this.playlistWidget.currentSelectionItems.filter(item => item instanceof Song).map(item => <Song>item));
+            this.renameDialog.show(this.playlist.currentSelection);
         }
     }
 
@@ -325,33 +343,25 @@ export class MainPlayer extends Widget
 
     private revealInExplorer() : void
     {
-        if (this.playlistWidget.currentSelection.length > 0)
+        if (this.playlist.currentSelection.length > 0)
         {
-            revealInExplorer(this.playlistWidget.currentSelection[0].item.getFilename());
+            revealInExplorer(this.playlist.currentSelection[0].filename);
         }
     }
 
     private skipSongOnce() : void
     {
-        this.skipOnceSongs.push(...this.playlistWidget.currentSelection);
-        this.playlistWidget.currentSelection.forEach(song =>
+        this.playlist.currentSelection.forEach(song =>
         {
-            song.container.classList.add("skipping");
+            song.skipping = true;
         });
-    }
-
-    private removeFromPlaylist() : void
-    {
-        //this.playlistWidget.playlist.removeSongsFromPlaylist(...this.playlistWidget.currentSelectionSongs);   
     }
 
     private scrollToCurrent() : void
     {
         if (this.currentlyPlaying)
         {
-            this.currentlyPlaying.container.scrollIntoView({
-                behavior: "smooth"
-            });
+            this.playlistView.scrollIntoView(this.currentlyPlaying);
         }
     }
 
@@ -362,60 +372,60 @@ export class MainPlayer extends Widget
 
     private playSelected() : boolean
     {
-        if (this.playlistWidget.currentSelection.length === 0)
+        if (this.playlist.currentSelection.length === 0)
         {
-            return this.playItem(this.playlistWidget.renderedSongs[0]);
+            return this.playSong(this.playlist.visibleSongs[0]);
         }
-        else if (this.playlistWidget.currentSelection.length === 1)
+        else if (this.playlist.currentSelection.length === 1)
         {
-            return this.playItem(this.playlistWidget.currentSelection[0]);
+            return this.playSong(this.playlist.currentSelection[0]);
         }
-        else if (this.playlistWidget.currentSelection.length > 1)
+        else if (this.playlist.currentSelection.length > 1)
         {
-            let ids = this.playlistWidget.currentSelection.map(itemWidget => "id:" + itemWidget.item.id);
+            let ids = this.playlist.currentSelection.map(song => "id:" + song.id);
             let filterString = ids.join("|");
-            this.filter.removeAllFilters();
+            //this.filter.removeAllFilters(true);
             this.filter.addFilter(filterString);
-            return this.playItem(this.playlistWidget.firstItem);
+            return this.playSong(this.playlist.visibleSongs[0]);
         }
     }
 
-    private playItem(itemWidget : PlaylistItemWidget, restart : boolean = false) : boolean
+    private playSong(song : Song, restart : boolean = false) : boolean
     {
-        if (!itemWidget)
+        if (!song)
         {
             return false;
         }
 
-        if (array_remove_all(this.skipOnceSongs, itemWidget).existed)
+        if (song.skipping)
         {
-            itemWidget.container.classList.remove("skipping");
-            return this.playItem(this.playlistWidget.itemAfter(itemWidget));
+            song.skipping = false;
+            return this.playSong(this.playlist.songAfter(song));
         }
 
-        let success = this.player.play(itemWidget.item.getFilename(), restart);
+        let success = this.player.play(song.filename, restart);
 
         if (success)
         {
             if (this.currentlyPlaying)
             {
-                if (this.currentlyPlaying === itemWidget)
+                if (this.currentlyPlaying === song)
                 {
                     return true;
                 }
-
-                this.currentlyPlaying.container.classList.remove("playing");
+                
+                this.currentlyPlaying.playing = false;
             }
 
-            this.currentlyPlaying = itemWidget;
-            this.currentlyPlaying.container.classList.add("playing");
+            this.currentlyPlaying = song;
+            this.currentlyPlaying.playing = true;
 
-            this.bottomBar.primaryString = itemWidget.item.metadata.title;
-            this.bottomBar.secondaryString = itemWidget.item.metadata.artist + " — " + itemWidget.item.metadata.album;
+            this.bottomBar.primaryString = song.metadata.title;
+            this.bottomBar.secondaryString = song.metadata.artist + " — " + song.metadata.album;
 
             // scroll
 
-            this.backgroundSrc = "url(" + JSON.stringify(itemWidget.item.metadata.picture) + ")";
+            this.backgroundSrc = "url(" + JSON.stringify(song.metadata.picture) + ")";
         }
 
         return success;
@@ -428,26 +438,20 @@ export class MainPlayer extends Widget
         this.bottomBar.reset();
         if (this.currentlyPlaying)
         {
-            this.currentlyPlaying.container.classList.remove("playing");
             this.currentlyPlaying = null;
         }
-        this.skipOnceSongs.forEach(widget =>
-        {
-            widget.container.classList.remove("skipping");
-        });
-        this.skipOnceSongs = [];
     }
 
     private playNext() : boolean
     {
-        return this.playItem(this.playlistWidget.itemAfter(this.currentlyPlaying));
+        return this.playSong(this.playlist.songAfter(this.currentlyPlaying));
     }
 
     private playPrevious() : void
     {
         if (this.player.currentTimeMs < 2000)
         {
-            this.playItem(this.playlistWidget.itemBefore(this.currentlyPlaying));
+            this.playSong(this.playlist.songBefore(this.currentlyPlaying));
         }
         else
         {
